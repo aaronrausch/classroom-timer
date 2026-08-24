@@ -1,23 +1,20 @@
 import {
   addPreset,
+  createId,
   movePreset,
   normalizeName,
   removePreset,
   sortPresets,
   updatePreset,
-  VISUALIZATION_IDS,
 } from '../core/presets';
 import type { Preset, VisualizationId } from '../core/presets';
-import { clampDurationSeconds, formatDuration, parseDurationInput } from '../core/timer';
+import { clampDurationSeconds, formatDuration } from '../core/timer';
 import type { WarningThreshold } from '../core/timer';
-import { dotIntervalLabel, dotPlan } from '../views/dots';
 import { icon, iconButton } from './icons';
-import { Modal, confirmDialog } from './modal';
-import { paletteOptions } from './theme';
+import { confirmDialog } from './modal';
 import type { PaletteColors } from './palettes';
 
 export interface PresetDraft {
-  id?: string;
   name: string;
   durationSeconds: number;
   visualization: VisualizationId;
@@ -29,6 +26,8 @@ export interface PresetDraft {
 export interface PresetListCallbacks {
   /** One click, straight to a running full-screen timer (SPEC §4.2, §13.2). */
   onLaunch(preset: Preset): void;
+  /** Load a saved timer into the sidebar's Current Timer panel for live editing. */
+  onEdit(preset: Preset): void;
   onPresetsChanged(presets: Preset[]): void;
   colorsFor(paletteId: string): PaletteColors;
 }
@@ -47,24 +46,19 @@ const MODE_ICONS: Record<VisualizationId, string> = {
   digits: 'vizDigits',
 };
 
-const WARNING_OPTIONS: Array<{ label: string; value: WarningThreshold }> = [
-  { label: 'No warning', value: { type: 'seconds', value: 0 } },
-  { label: '10 seconds left', value: { type: 'seconds', value: 10 } },
-  { label: '15 seconds left', value: { type: 'seconds', value: 15 } },
-  { label: '30 seconds left', value: { type: 'seconds', value: 30 } },
-  { label: '1 minute left', value: { type: 'seconds', value: 60 } },
-  { label: '2 minutes left', value: { type: 'seconds', value: 120 } },
-  { label: '5 minutes left', value: { type: 'seconds', value: 300 } },
-  { label: 'Last 10%', value: { type: 'percent', value: 10 } },
-  { label: 'Last 25%', value: { type: 'percent', value: 25 } },
-];
-
 /**
  * The preset library (SPEC §5.8).
  *
  * This is the feature that turns a utility into a daily tool — the difference
  * between "a timer" and "*this class's* timer". Everything here is sized for a
  * finger or a whiteboard stylus rather than a mouse (SPEC §7.3).
+ *
+ * Editing is not a form in a modal disconnected from the stage: the pencil on
+ * a tile loads that preset into the sidebar's always-visible Current Timer
+ * panel (`Sidebar`), where every change is reflected live on the stage as it
+ * is made. This class owns only the tiles and the pure array operations
+ * (`saveAsNew`, `updateExisting`, `deleteById`, `moveById`) that the panel's
+ * actions call into — see `docs/adr/0006-live-preset-editing.md`.
  */
 export class PresetList {
   readonly element: HTMLElement;
@@ -90,6 +84,36 @@ export class PresetList {
     for (const preset of this.presets) {
       this.list.append(this.tile(preset));
     }
+  }
+
+  /** Add a new preset from a draft, at the end of the order. Returns it (with its generated id). */
+  saveAsNew(draft: PresetDraft): Preset {
+    const id = createId();
+    const clean = { id, ...sanitizedDraft(draft) };
+    this.commit(addPreset(this.presets, clean));
+    return this.presets.find((preset) => preset.id === id) as Preset;
+  }
+
+  /** Overwrite an existing preset's stored fields with a draft's values. */
+  updateExisting(id: string, draft: PresetDraft): void {
+    this.commit(updatePreset(this.presets, id, sanitizedDraft(draft)));
+  }
+
+  /** Delete after confirmation (SPEC §5.8). Resolves false if cancelled or not found. */
+  async deleteById(id: string): Promise<boolean> {
+    const preset = this.presets.find((candidate) => candidate.id === id);
+    if (!preset) return false;
+    const confirmed = await confirmDialog(`Delete "${preset.name}"?`, 'Delete');
+    if (!confirmed) return false;
+    this.commit(removePreset(this.presets, id));
+    return true;
+  }
+
+  /** The keyboard-accessible alternative to drag-and-drop reordering (SPEC §5.8). */
+  moveById(id: string, direction: 1 | -1): void {
+    const index = this.presets.findIndex((preset) => preset.id === id);
+    if (index === -1) return;
+    this.commit(movePreset(this.presets, id, index + direction));
   }
 
   private tile(preset: Preset): HTMLLIElement {
@@ -131,13 +155,14 @@ export class PresetList {
       name: 'edit',
       className: 'preset-edit',
       size: 20,
-      onClick: () => this.openEditor(preset),
+      onClick: () => this.callbacks.onEdit(preset),
     });
 
     item.append(launch, edit);
 
-    // Drag to reorder, with the keyboard alternative living in the editor so
-    // the two paths cannot drift apart (SPEC §5.8).
+    // Drag to reorder; the keyboard-accessible alternative lives in the
+    // Current Timer panel once a preset is loaded there (SPEC §5.8), so the
+    // two paths share the same `moveById` and cannot drift apart.
     item.addEventListener('dragstart', (event) => {
       this.dragId = preset.id;
       item.classList.add('is-dragging');
@@ -167,259 +192,6 @@ export class PresetList {
     return item;
   }
 
-  /** Open the editor on an existing preset, or on a draft of the current setup. */
-  openEditor(source: Preset | PresetDraft): void {
-    const isExisting = 'id' in source && typeof source.id === 'string' && this.has(source.id);
-    const draft: PresetDraft = {
-      id: isExisting ? (source.id as string) : undefined,
-      name: source.name,
-      durationSeconds: source.durationSeconds,
-      visualization: source.visualization,
-      palette: source.palette,
-      readout: source.readout,
-      warning: source.warning,
-    };
-
-    const modal = new Modal(isExisting ? 'Edit timer' : 'Save timer');
-    const form = document.createElement('form');
-    form.className = 'preset-form';
-    form.addEventListener('submit', (event) => event.preventDefault());
-
-    const hint = document.createElement('p');
-    hint.className = 'field-hint';
-
-    // ---------------------------------------------------------------- name
-    const nameField = labelledField('Name', () => {
-      const input = document.createElement('input');
-      input.type = 'text';
-      input.className = 'text-input';
-      input.value = draft.name;
-      input.maxLength = 48;
-      input.autocomplete = 'off';
-      input.addEventListener('input', () => {
-        draft.name = input.value;
-      });
-      return input;
-    });
-
-    // ------------------------------------------------------------ duration
-    const durationField = labelledField('Length', () => {
-      const input = document.createElement('input');
-      input.type = 'text';
-      input.inputMode = 'numeric';
-      input.className = 'text-input';
-      input.value = formatDuration(draft.durationSeconds);
-      input.addEventListener('change', () => {
-        const parsed = parseDurationInput(input.value);
-        draft.durationSeconds = parsed ?? draft.durationSeconds;
-        input.value = formatDuration(draft.durationSeconds);
-        updateHint();
-      });
-      return input;
-    });
-
-    // ------------------------------------------------------- visualization
-    const modeButtons = new Map<VisualizationId, HTMLButtonElement>();
-    const modeField = labelledField('Display', () => {
-      const group = document.createElement('div');
-      group.className = 'chip-row';
-      group.setAttribute('role', 'group');
-      for (const id of VISUALIZATION_IDS) {
-        const button = iconButton({
-          label: MODE_LABELS[id],
-          name: MODE_ICONS[id],
-          className: 'chip',
-          onClick: () => {
-            draft.visualization = id;
-            syncModes();
-            updateHint();
-          },
-        });
-        modeButtons.set(id, button);
-        group.append(button);
-      }
-      return group;
-    });
-
-    // ------------------------------------------------------------- palette
-    const paletteButtons = new Map<string, HTMLButtonElement>();
-    const paletteField = labelledField('Colour', () => {
-      const group = document.createElement('div');
-      group.className = 'chip-row';
-      group.setAttribute('role', 'group');
-      for (const option of paletteOptions()) {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'chip chip-swatch';
-        button.setAttribute('aria-label', option.label);
-        button.title = option.label;
-        const colors = this.callbacks.colorsFor(option.id);
-        button.style.setProperty('--swatch-fill', colors.fill);
-        button.style.setProperty('--swatch-track', colors.track);
-        button.addEventListener('click', () => {
-          draft.palette = option.id;
-          syncPalettes();
-        });
-        paletteButtons.set(option.id, button);
-        group.append(button);
-      }
-      return group;
-    });
-
-    // ------------------------------------------------------------- readout
-    const readoutButton = document.createElement('button');
-    readoutButton.type = 'button';
-    readoutButton.className = 'chip chip-wide';
-    readoutButton.addEventListener('click', () => {
-      draft.readout = !draft.readout;
-      syncReadout();
-    });
-    const readoutField = labelledField('Numbers', () => readoutButton);
-
-    // ------------------------------------------------------------- warning
-    const warningSelect = document.createElement('select');
-    warningSelect.className = 'select-input';
-    for (const [index, option] of WARNING_OPTIONS.entries()) {
-      const element = document.createElement('option');
-      element.value = String(index);
-      element.textContent = option.label;
-      warningSelect.append(element);
-    }
-    warningSelect.value = String(warningOptionIndex(draft.warning));
-    warningSelect.addEventListener('change', () => {
-      draft.warning = WARNING_OPTIONS[Number(warningSelect.value)].value;
-    });
-    const warningField = labelledField('Warn at', () => warningSelect);
-
-    form.append(nameField, durationField, modeField, paletteField, readoutField, warningField, hint);
-
-    // ------------------------------------------------------------- actions
-    const actions = document.createElement('div');
-    actions.className = 'modal-actions';
-
-    if (isExisting) {
-      // The keyboard-accessible reordering path.
-      const reorder = document.createElement('div');
-      reorder.className = 'reorder-group';
-      reorder.append(
-        iconButton({
-          label: 'Move earlier',
-          name: 'chevronUp',
-          className: 'icon-button-quiet',
-          onClick: () => {
-            const index = this.presets.findIndex((preset) => preset.id === draft.id);
-            this.commit(movePreset(this.presets, draft.id as string, index - 1));
-          },
-        }),
-        iconButton({
-          label: 'Move later',
-          name: 'chevronDown',
-          className: 'icon-button-quiet',
-          onClick: () => {
-            const index = this.presets.findIndex((preset) => preset.id === draft.id);
-            this.commit(movePreset(this.presets, draft.id as string, index + 1));
-          },
-        }),
-      );
-
-      const remove = document.createElement('button');
-      remove.type = 'button';
-      remove.className = 'button button-danger';
-      remove.textContent = 'Delete';
-      remove.addEventListener('click', async () => {
-        const confirmed = await confirmDialog(`Delete “${draft.name}”?`, 'Delete');
-        if (!confirmed) return;
-        this.commit(removePreset(this.presets, draft.id as string));
-        modal.close();
-        modal.destroy();
-      });
-
-      actions.append(reorder, remove);
-    }
-
-    const cancel = document.createElement('button');
-    cancel.type = 'button';
-    cancel.className = 'button';
-    cancel.textContent = 'Cancel';
-    cancel.addEventListener('click', () => {
-      modal.close();
-      modal.destroy();
-    });
-
-    const save = document.createElement('button');
-    save.type = 'submit';
-    save.className = 'button button-primary';
-    save.textContent = 'Save';
-    save.addEventListener('click', () => {
-      const clean = {
-        name: normalizeName(draft.name),
-        durationSeconds: clampDurationSeconds(draft.durationSeconds),
-        visualization: draft.visualization,
-        palette: draft.palette,
-        readout: draft.readout,
-        warning: draft.warning,
-      };
-      this.commit(
-        draft.id
-          ? updatePreset(this.presets, draft.id, clean)
-          : addPreset(this.presets, { ...clean }),
-      );
-      modal.close();
-      modal.destroy();
-    });
-
-    actions.append(cancel, save);
-    form.append(actions);
-    modal.body.append(form);
-
-    function syncModes(): void {
-      for (const [id, button] of modeButtons) {
-        const active = id === draft.visualization;
-        button.classList.toggle('is-active', active);
-        button.setAttribute('aria-pressed', String(active));
-      }
-      // A numeric overlay on the digits mode is meaningless, so the control is
-      // removed rather than left to be pressed with no effect (SPEC §5.4).
-      readoutField.hidden = draft.visualization === 'digits';
-    }
-
-    function syncPalettes(): void {
-      for (const [id, button] of paletteButtons) {
-        const active = id === draft.palette;
-        button.classList.toggle('is-active', active);
-        button.setAttribute('aria-pressed', String(active));
-      }
-    }
-
-    function syncReadout(): void {
-      readoutButton.classList.toggle('is-active', draft.readout);
-      readoutButton.setAttribute('aria-pressed', String(draft.readout));
-      readoutButton.replaceChildren(icon(draft.readout ? 'check' : 'close', 20));
-      readoutButton.setAttribute('aria-label', draft.readout ? 'Numbers shown' : 'Numbers hidden');
-      readoutButton.title = readoutButton.getAttribute('aria-label') as string;
-    }
-
-    function updateHint(): void {
-      if (draft.visualization === 'dots') {
-        const plan = dotPlan(draft.durationSeconds);
-        hint.textContent = `${dotIntervalLabel(plan.intervalSeconds)} · ${plan.count} dots`;
-        hint.hidden = false;
-      } else {
-        hint.hidden = true;
-      }
-    }
-
-    syncModes();
-    syncPalettes();
-    syncReadout();
-    updateHint();
-    modal.show();
-  }
-
-  private has(id: string): boolean {
-    return this.presets.some((preset) => preset.id === id);
-  }
-
   private commit(presets: Preset[]): void {
     this.presets = sortPresets(presets);
     this.render(this.presets);
@@ -427,43 +199,18 @@ export class PresetList {
   }
 }
 
-let fieldSequence = 0;
-
-/**
- * A labelled row. Form controls get a real `<label for>`; rows of buttons get
- * a group with an accessible name instead, because a `<label>` wrapping four
- * buttons names none of them (SPEC §8).
- */
-function labelledField(label: string, build: () => HTMLElement): HTMLElement {
-  const wrapper = document.createElement('div');
-  wrapper.className = 'field';
-  const control = build();
-  const isFormControl =
-    control instanceof HTMLInputElement ||
-    control instanceof HTMLSelectElement ||
-    control instanceof HTMLTextAreaElement;
-
-  const text = document.createElement(isFormControl ? 'label' : 'span');
-  text.className = 'field-label';
-  text.textContent = label;
-
-  if (isFormControl) {
-    const id = `field-${(fieldSequence += 1)}`;
-    control.id = id;
-    (text as HTMLLabelElement).htmlFor = id;
-  } else {
-    control.setAttribute('aria-label', label);
-  }
-
-  wrapper.append(text, control);
-  return wrapper;
-}
-
-function warningOptionIndex(warning: WarningThreshold): number {
-  const index = WARNING_OPTIONS.findIndex(
-    (option) => option.value.type === warning.type && option.value.value === warning.value,
-  );
-  return index === -1 ? WARNING_OPTIONS.findIndex((option) => option.value.value === 60) : index;
+function sanitizedDraft(draft: PresetDraft): Omit<PresetDraft, 'name' | 'durationSeconds'> & {
+  name: string;
+  durationSeconds: number;
+} {
+  return {
+    name: normalizeName(draft.name),
+    durationSeconds: clampDurationSeconds(draft.durationSeconds),
+    visualization: draft.visualization,
+    palette: draft.palette,
+    readout: draft.readout,
+    warning: draft.warning,
+  };
 }
 
 function describeDuration(seconds: number): string {

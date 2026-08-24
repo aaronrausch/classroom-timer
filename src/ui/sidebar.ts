@@ -1,8 +1,11 @@
 import { CHIMES } from '../core/audio';
 import type { AppData, Settings, ThemeChoice } from '../core/presets';
 import { SCHEMA_VERSION, sanitizeAppData, serializeAppData } from '../core/storage';
+import type { WarningThreshold } from '../core/timer';
 import { icon, iconButton } from './icons';
+import type { PaletteColors } from './palettes';
 import type { PresetList } from './presetList';
+import { paletteOptions } from './theme';
 
 /** Nought, one and two arcs: gentle, neutral, assertive. */
 const CHIME_ICONS: Record<string, string> = {
@@ -11,36 +14,85 @@ const CHIME_ICONS: Record<string, string> = {
   assertive: 'soundHigh',
 };
 
+const WARNING_OPTIONS: Array<{ label: string; value: WarningThreshold }> = [
+  { label: 'No warning', value: { type: 'seconds', value: 0 } },
+  { label: '10 seconds left', value: { type: 'seconds', value: 10 } },
+  { label: '15 seconds left', value: { type: 'seconds', value: 15 } },
+  { label: '30 seconds left', value: { type: 'seconds', value: 30 } },
+  { label: '1 minute left', value: { type: 'seconds', value: 60 } },
+  { label: '2 minutes left', value: { type: 'seconds', value: 120 } },
+  { label: '5 minutes left', value: { type: 'seconds', value: 300 } },
+  { label: 'Last 10%', value: { type: 'percent', value: 10 } },
+  { label: 'Last 25%', value: { type: 'percent', value: 25 } },
+];
+
+/**
+ * The three preset fields that had no live home before this panel existed —
+ * duration, visualization and the numeric readout are already live-editable
+ * from the main toolbar, so they are deliberately *not* duplicated here; a
+ * second place to change the same value would only invite the two going out
+ * of sync. Name, colour and warning threshold had no such home, which is
+ * exactly why editing a preset used to mean a disconnected modal form.
+ */
+export interface CurrentTimerFields {
+  name: string;
+  palette: string;
+  warning: WarningThreshold;
+}
+
 export interface SidebarCallbacks {
   onSettingsChange(settings: Settings): void;
   onPreviewChime(soundId: string): void;
   onImport(data: AppData): void;
-  onCreatePreset(): void;
   onCollapse(): void;
   getData(): AppData;
+  colorsFor(paletteId: string): PaletteColors;
   /** Set when persistence is not working, so it can be said once, quietly. */
   storageNotice(): string | null;
+
+  // ------------------------------------------------------- current timer
+  getCurrentTimer(): CurrentTimerFields;
+  onCurrentTimerChange(patch: Partial<CurrentTimerFields>): void;
+  /** The id of the saved preset currently loaded for editing, or null for an unsaved, ad-hoc timer. */
+  getLoadedPresetId(): string | null;
+  onSaveAsNew(): void;
+  onUpdateLoaded(): void;
+  /** Returns once the delete flow (including the confirm dialog) has settled. */
+  onDeleteLoaded(): Promise<void>;
+  onMoveLoaded(direction: 1 | -1): void;
+  /** Reset to a blank, unsaved timer. */
+  onStartFresh(): void;
 }
 
 /**
- * The sidebar: saved timers and every setting, in one collapsible panel
- * (SPEC §5.8, §5.12).
+ * The sidebar: the current timer, saved timers, and every setting, in one
+ * collapsible panel (SPEC §5.8, §5.12).
  *
- * This is the one place in the app that trades the icons-not-words principle
- * (§1.2) for a few words of section heading. That principle is about the
- * *stage* — what a student reads from the back of the room — and none of this
- * panel is ever visible to a student; it is the teacher's own setup surface,
- * open only before or between activities. A "Sound" heading over the chime
- * controls costs nothing there and saves a guess.
+ * The Current Timer section is what makes editing *live*: it is not a form
+ * that commits on save, it is the actual configuration driving the stage,
+ * with three fields wired directly to it (see `CurrentTimerFields`). Loading
+ * a saved preset here (the pencil on a tile) or launching one (SPEC §4.2)
+ * both populate it; the only difference is whether the timer also starts.
+ * See `docs/adr/0006-live-preset-editing.md`.
+ *
+ * This is also the one place in the app that trades the icons-not-words
+ * principle (§1.2) for a few words of section heading. That principle is
+ * about the *stage* — what a student reads from the back of the room — and
+ * none of this panel is ever visible to a student; it is the teacher's own
+ * setup surface, open only before or between activities.
  */
 export class Sidebar {
   readonly element: HTMLElement;
 
   private readonly body: HTMLElement;
-  private readonly presetsSection: HTMLElement;
   private readonly notice: HTMLElement;
   private readonly privacy: HTMLElement;
   private soundSectionRefresh: (() => void) | null = null;
+
+  private nameInput!: HTMLInputElement;
+  private paletteButtons = new Map<string, HTMLButtonElement>();
+  private warningSelect!: HTMLSelectElement;
+  private actionsContainer!: HTMLElement;
 
   constructor(
     private readonly presetList: PresetList,
@@ -73,9 +125,9 @@ export class Sidebar {
     this.body.className = 'sidebar-body';
     bodyCell.append(this.body);
 
-    this.presetsSection = document.createElement('section');
-    this.presetsSection.className = 'sidebar-section';
-    this.presetsSection.append(this.buildPresetsSection());
+    const presetsSection = document.createElement('section');
+    presetsSection.className = 'sidebar-section';
+    presetsSection.append(sectionHeading('Saved timers'), this.presetList.element);
 
     this.notice = document.createElement('p');
     this.notice.className = 'settings-notice';
@@ -87,7 +139,8 @@ export class Sidebar {
       'This timer sends nothing anywhere. No accounts, no analytics, no network. Your timers are stored only in this browser.';
 
     this.body.append(
-      this.presetsSection,
+      this.buildCurrentTimerSection(),
+      presetsSection,
       this.buildAppearanceSection(),
       this.buildSoundSection(),
       this.buildDisplaySection(),
@@ -97,31 +150,194 @@ export class Sidebar {
     );
 
     this.element.append(header, bodyCell);
+    this.refreshCurrentTimer();
   }
 
-  /** Called whenever the underlying settings or presets may have changed. */
+  /** Called whenever the underlying settings, presets, or current timer may have changed. */
   refresh(): void {
     const notice = this.callbacks.storageNotice();
     this.notice.hidden = !notice;
     this.notice.textContent = notice ?? '';
     this.soundSectionRefresh?.();
+    this.refreshCurrentTimer();
+  }
+
+  // ------------------------------------------------------ current timer
+
+  private buildCurrentTimerSection(): HTMLElement {
+    const section = document.createElement('section');
+    section.className = 'sidebar-section';
+
+    const heading = sectionHeading('Current timer');
+    const startFresh = iconButton({
+      label: 'Start a new timer',
+      name: 'plus',
+      className: 'icon-button-quiet',
+      size: 18,
+      onClick: () => this.callbacks.onStartFresh(),
+    });
+    heading.append(startFresh);
+
+    const nameField = labelledField('Name', () => {
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'text-input';
+      input.maxLength = 48;
+      input.autocomplete = 'off';
+      input.addEventListener('input', () => {
+        this.callbacks.onCurrentTimerChange({ name: input.value });
+      });
+      this.nameInput = input;
+      return input;
+    });
+
+    const paletteField = labelledField('Colour', () => {
+      const group = document.createElement('div');
+      group.className = 'chip-row';
+      for (const option of paletteOptions()) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'chip chip-swatch';
+        button.setAttribute('aria-label', option.label);
+        button.title = option.label;
+        const colors = this.callbacks.colorsFor(option.id);
+        button.style.setProperty('--swatch-fill', colors.fill);
+        button.style.setProperty('--swatch-track', colors.track);
+        button.addEventListener('click', () => {
+          this.callbacks.onCurrentTimerChange({ palette: option.id });
+          this.syncPaletteButtons();
+        });
+        this.paletteButtons.set(option.id, button);
+        group.append(button);
+      }
+      return group;
+    });
+
+    const warningField = labelledField('Warn at', () => {
+      const select = document.createElement('select');
+      select.className = 'select-input';
+      for (const [index, option] of WARNING_OPTIONS.entries()) {
+        const element = document.createElement('option');
+        element.value = String(index);
+        element.textContent = option.label;
+        select.append(element);
+      }
+      select.addEventListener('change', () => {
+        this.callbacks.onCurrentTimerChange({ warning: WARNING_OPTIONS[Number(select.value)].value });
+      });
+      this.warningSelect = select;
+      return select;
+    });
+
+    this.actionsContainer = document.createElement('div');
+    this.actionsContainer.className = 'current-timer-actions';
+
+    section.append(heading, nameField, paletteField, warningField, this.actionsContainer);
+    return section;
+  }
+
+  private refreshCurrentTimer(): void {
+    if (!this.nameInput) return; // Called once from the constructor before fields exist.
+
+    const current = this.callbacks.getCurrentTimer();
+    // Never clobber a name mid-keystroke (the same guard the duration input
+    // uses in Controls) — this can be called from a settings refresh that has
+    // nothing to do with what the teacher is currently typing.
+    if (document.activeElement !== this.nameInput && this.nameInput.value !== current.name) {
+      this.nameInput.value = current.name;
+    }
+    this.syncPaletteButtons();
+    const warningIndex = warningOptionIndex(current.warning);
+    if (this.warningSelect.value !== String(warningIndex)) {
+      this.warningSelect.value = String(warningIndex);
+    }
+
+    this.renderActions();
+  }
+
+  private syncPaletteButtons(): void {
+    const current = this.callbacks.getCurrentTimer().palette;
+    for (const [id, button] of this.paletteButtons) {
+      const active = id === current;
+      button.classList.toggle('is-active', active);
+      button.setAttribute('aria-pressed', String(active));
+    }
+  }
+
+  private renderActions(): void {
+    const loadedId = this.callbacks.getLoadedPresetId();
+    this.actionsContainer.replaceChildren();
+
+    if (loadedId === null) {
+      const save = document.createElement('button');
+      save.type = 'button';
+      save.className = 'button button-primary';
+      save.textContent = 'Save as timer';
+      save.addEventListener('click', () => this.callbacks.onSaveAsNew());
+      this.actionsContainer.append(save);
+      return;
+    }
+
+    // Reuses the modal action-row styling — the layout (wrap, gap, spacing)
+    // is what's wanted here too, even though this row is no longer in a modal.
+    const saveRow = document.createElement('div');
+    saveRow.className = 'modal-actions';
+
+    const update = document.createElement('button');
+    update.type = 'button';
+    update.className = 'button button-primary';
+    update.textContent = 'Update';
+    update.addEventListener('click', () => this.callbacks.onUpdateLoaded());
+
+    const saveAsNew = document.createElement('button');
+    saveAsNew.type = 'button';
+    saveAsNew.className = 'button';
+    saveAsNew.textContent = 'Save as new';
+    saveAsNew.addEventListener('click', () => this.callbacks.onSaveAsNew());
+
+    saveRow.append(update, saveAsNew);
+
+    const manageRow = document.createElement('div');
+    manageRow.className = 'modal-actions';
+
+    // The keyboard-accessible alternative to dragging a tile (SPEC §5.8),
+    // reachable once a preset is loaded here.
+    const reorder = document.createElement('div');
+    reorder.className = 'reorder-group';
+    reorder.append(
+      iconButton({
+        label: 'Move earlier in the list',
+        name: 'chevronUp',
+        className: 'icon-button-quiet',
+        onClick: () => this.callbacks.onMoveLoaded(-1),
+      }),
+      iconButton({
+        label: 'Move later in the list',
+        name: 'chevronDown',
+        className: 'icon-button-quiet',
+        onClick: () => this.callbacks.onMoveLoaded(1),
+      }),
+    );
+
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'button button-danger';
+    remove.textContent = 'Delete';
+    remove.addEventListener('click', () => {
+      // A confirm dialog means a real gap between click and effect — without
+      // this, a fast double-click opens two stacked "Delete X?" dialogs.
+      if (remove.disabled) return;
+      remove.disabled = true;
+      void this.callbacks.onDeleteLoaded().finally(() => {
+        remove.disabled = false;
+      });
+    });
+
+    manageRow.append(reorder, remove);
+    this.actionsContainer.append(saveRow, manageRow);
   }
 
   // ------------------------------------------------------------ sections
-
-  private buildPresetsSection(): HTMLElement {
-    const heading = sectionHeading('Saved timers');
-    const create = document.createElement('button');
-    create.type = 'button';
-    create.className = 'sidebar-new-button';
-    create.append(icon('plus', 16), document.createTextNode('New timer'));
-    create.addEventListener('click', () => this.callbacks.onCreatePreset());
-    heading.append(create);
-
-    const wrap = document.createElement('div');
-    wrap.append(heading, this.presetList.element);
-    return wrap;
-  }
 
   private buildAppearanceSection(): HTMLElement {
     const section = document.createElement('section');
@@ -159,7 +375,7 @@ export class Sidebar {
         [
           { value: 'none', label: 'No ticks', iconName: 'ticksNone' },
           { value: 'clock', label: 'Clock positions', iconName: 'ticksClock' },
-          { value: 'interval', label: 'This timer\u2019s intervals', iconName: 'ticksInterval' },
+          { value: 'interval', label: 'This timer’s intervals', iconName: 'ticksInterval' },
         ],
         () => this.callbacks.getData().settings.circleTicks,
         (value) => this.patch({ circleTicks: value }),
@@ -327,6 +543,46 @@ export class Sidebar {
       // A file that is not an export of this app is simply ignored.
     }
   }
+}
+
+let fieldSequence = 0;
+
+/**
+ * A labelled row. Form controls get a real `<label for>`; rows of buttons get
+ * a group with an accessible name instead, because a `<label>` wrapping
+ * several buttons names none of them (SPEC §8).
+ */
+function labelledField(label: string, build: () => HTMLElement): HTMLElement {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'field';
+  const control = build();
+  const isFormControl =
+    control instanceof HTMLInputElement ||
+    control instanceof HTMLSelectElement ||
+    control instanceof HTMLTextAreaElement;
+
+  const text = document.createElement(isFormControl ? 'label' : 'span');
+  text.className = 'field-label';
+  text.textContent = label;
+
+  if (isFormControl) {
+    const id = `field-${(fieldSequence += 1)}`;
+    control.id = id;
+    (text as HTMLLabelElement).htmlFor = id;
+  } else {
+    control.setAttribute('role', 'group');
+    control.setAttribute('aria-label', label);
+  }
+
+  wrapper.append(text, control);
+  return wrapper;
+}
+
+function warningOptionIndex(warning: WarningThreshold): number {
+  const index = WARNING_OPTIONS.findIndex(
+    (option) => option.value.type === warning.type && option.value.value === warning.value,
+  );
+  return index === -1 ? WARNING_OPTIONS.findIndex((option) => option.value.value === 60) : index;
 }
 
 function sectionHeading(label: string): HTMLElement {

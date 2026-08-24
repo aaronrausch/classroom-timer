@@ -6,9 +6,7 @@ and stores nothing but the timers you save, in your own browser.
 
 **[Live demo →](https://aaronrausch.github.io/classroom-timer/)**
 
-![Classroom Timer showing a circle countdown](docs/screenshot.png)
-_(add a screenshot here once you have one — see the note in
-[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md))_
+![Classroom Timer showing a circle countdown, deployed on GitHub Pages](images/classroom_timer.png)
 
 ## What it is
 

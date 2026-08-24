@@ -55,12 +55,19 @@ src/
   ui/                 The DOM layer: controls, the preset library, the
                        sidebar, theming, full-screen handling.
     controls.ts         The toolbar and the keyboard bindings.
-    presetList.ts       Preset tiles plus their create/edit/delete/reorder
-                       flow.
-    sidebar.ts          Saved timers and every setting in one collapsible
-                       panel — the one place a section heading (plain text)
-                       is used, because none of it is ever shown to a
-                       student; see the comment at the top of the file.
+    presetList.ts       Preset tiles (launch + load-for-editing), and the
+                       pure save/update/delete/reorder operations the
+                       sidebar's Current Timer panel calls into.
+    sidebar.ts          The Current Timer panel, saved timers, and every
+                       setting, in one collapsible panel. Editing a preset is
+                       not a form that commits on save — the panel is a live
+                       view onto the same config the render loop reads every
+                       frame, so a colour or warning-threshold change shows
+                       on the stage immediately. See
+                       docs/adr/0006-live-preset-editing.md. This is also the
+                       one place a section heading (plain text) is used,
+                       because none of it is ever shown to a student; see the
+                       comment at the top of the file.
     theme.ts            Light/dark, palette application, and the
                        prefers-reduced-motion listener.
     fullscreen.ts        Fullscreen API with a maximised-layout fallback,

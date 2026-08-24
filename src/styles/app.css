@@ -250,8 +250,10 @@ body {
   letter-spacing: 0.01em;
   pointer-events: none;
   /* Clearly subordinate to the graphical visual. If it competed, the teacher
-     should simply have chosen the digits mode (SPEC §5.4). */
-  font-size: clamp(1.4rem, 9vmin, 7rem);
+     should simply have chosen the digits mode (SPEC §5.4) — but "subordinate"
+     means smaller than the ring/bar/grid it sits on, not small outright; this
+     is still the number a room is meant to read. */
+  font-size: clamp(2rem, 13vmin, 11rem);
   line-height: 1;
 }
 
@@ -287,7 +289,7 @@ body {
   bottom: 1%;
   left: 50%;
   transform: translateX(-50%);
-  font-size: clamp(1.2rem, 7vmin, 5rem);
+  font-size: clamp(1.6rem, 9vmin, 7.5rem);
 }
 
 .stage-viz[data-viz='dots'][data-readout='on'] .viz-dots {
@@ -418,14 +420,6 @@ body {
   width: 1px;
   margin: 1.7rem 0 0.1rem;
   background: var(--surface-border);
-}
-
-.controls-hint {
-  flex-basis: 100%;
-  margin: 0.5rem 0 0;
-  color: var(--surface-muted);
-  font-size: 0.9em;
-  text-align: center;
 }
 
 /*
@@ -795,6 +789,20 @@ body {
 
 .settings-row-stacked {
   align-items: flex-start;
+}
+
+/* Consistent breathing room below the last field, whether it holds a single
+   "Save as timer" button or the fuller Update/Save-as-new/Delete rows. */
+.current-timer-actions {
+  margin-top: 0.9rem;
+}
+
+.current-timer-actions .modal-actions {
+  margin-top: 0;
+}
+
+.current-timer-actions .modal-actions + .modal-actions {
+  margin-top: 0.75rem;
 }
 
 .field-label,

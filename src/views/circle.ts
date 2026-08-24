@@ -5,6 +5,15 @@ export type CircleStyle = 'ring' | 'disc';
 export type CircleTicks = 'none' | 'clock' | 'interval';
 
 /**
+ * The circle visualization, with one extra capability beyond the generic
+ * `Visualization` interface: its tick style can be changed live, without
+ * tearing down and recreating the ring/track/depletion-arc. See `setTicks`.
+ */
+export interface CircleVisualization extends Visualization {
+  setTicks(mode: CircleTicks): void;
+}
+
+/**
  * Duration-relative tick spacing for `circleTicks: 'interval'` — the same
  * "always a round unit" discipline SPEC §5.3C requires of the dots mode,
  * applied here as a ruler around the circle rather than a countdown. Capped
@@ -48,8 +57,11 @@ function intervalTickPlan(totalSeconds: number): { intervalSeconds: number; coun
 export function createCircle(
   root: HTMLElement,
   style: CircleStyle = 'ring',
-  ticksMode: CircleTicks = 'none',
-): Visualization {
+  initialTicksMode: CircleTicks = 'none',
+): CircleVisualization {
+  // Mutable: `setTicks` below is what makes changing tick style a live
+  // update rather than a full recreation of the visualization.
+  let ticksMode = initialTicksMode;
   // Ring: a stroked outline. Disc: the same stroke, thickened until it closes
   // into a filled pie. One code path, two appearances, no arc maths either way.
   const radius = style === 'ring' ? 42 : 21;
@@ -112,27 +124,39 @@ export function createCircle(
     });
   }
 
-  if (ticksMode === 'clock') {
-    // Twelve fixed marks, like an analogue clock face; the four quarter
-    // positions ("ticks in hour clock positions") read as the accented ones.
-    for (let i = 0; i < 12; i += 1) {
-      ticks.append(tickLine(i * 30, i % 3 === 0));
+  let lastTotalSeconds = 0;
+  // Tracks what's actually built, independent of `ticksMode`/mode-specific
+  // state below, so `render()` only pays for a rebuild when something that
+  // would change the drawn ticks actually changed.
+  let builtFor = '';
+
+  function rebuildTicks(): void {
+    const key = `${ticksMode}:${ticksMode === 'interval' ? Math.round(lastTotalSeconds) : ''}`;
+    if (key === builtFor) return;
+    builtFor = key;
+    while (ticks.firstChild) ticks.removeChild(ticks.firstChild);
+
+    if (ticksMode === 'clock') {
+      // Twelve fixed marks, like an analogue clock face; the four quarter
+      // positions ("ticks in hour clock positions") read as the accented ones.
+      for (let i = 0; i < 12; i += 1) {
+        ticks.append(tickLine(i * 30, i % 3 === 0));
+      }
+      return;
+    }
+
+    if (ticksMode === 'interval') {
+      const rounded = Math.round(lastTotalSeconds);
+      if (rounded <= 0) return;
+      const plan = intervalTickPlan(rounded);
+      for (let i = 1; i <= plan.count; i += 1) {
+        const angle = (i * plan.intervalSeconds * 360) / rounded;
+        ticks.append(tickLine(angle, i % ACCENT_EVERY === 0));
+      }
     }
   }
 
-  let builtIntervalSeconds = -1;
-  function buildIntervalTicks(totalSeconds: number): void {
-    const rounded = Math.round(totalSeconds);
-    if (rounded === builtIntervalSeconds) return;
-    builtIntervalSeconds = rounded;
-    while (ticks.firstChild) ticks.removeChild(ticks.firstChild);
-    if (rounded <= 0) return;
-    const plan = intervalTickPlan(rounded);
-    for (let i = 1; i <= plan.count; i += 1) {
-      const angle = (i * plan.intervalSeconds * 360) / rounded;
-      ticks.append(tickLine(angle, i % ACCENT_EVERY === 0));
-    }
-  }
+  rebuildTicks();
 
   const remaining = svg('circle', {
     cx: 50,
@@ -157,8 +181,15 @@ export function createCircle(
   return {
     id: 'circle',
     supportsReadout: true,
+    setTicks(mode: CircleTicks) {
+      // Deliberately does not touch track/remaining/readout at all — only
+      // this group's own children change, so there is nothing to flash.
+      ticksMode = mode;
+      rebuildTicks();
+    },
     render(state: RenderState) {
-      if (ticksMode === 'interval') buildIntervalTicks(state.totalMs / 1000);
+      lastTotalSeconds = state.totalMs / 1000;
+      rebuildTicks();
 
       const fraction = depletionFraction(state);
       // dashoffset C*(1-f) leaves exactly C*f drawn: exact at 1, exact at 0.

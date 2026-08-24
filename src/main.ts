@@ -30,11 +30,19 @@ interface WorkingConfig {
   warning: WarningThreshold;
 }
 
+function defaultConfig(): WorkingConfig {
+  return {
+    name: 'Timer',
+    durationSeconds: 300,
+    visualization: 'circle',
+    palette: 'teal',
+    readout: true,
+    warning: { type: 'seconds', value: 60 },
+  };
+}
+
 /** The warning cross-fade: smooth, never a jump and never a flash (SPEC §5.5). */
 const WARNING_FADE_MS = 600;
-
-/** The control bar only needs to keep up with a person, not with a screen. */
-const CHROME_UPDATE_MS = 200;
 
 function boot(): void {
   const root = document.getElementById('app');
@@ -60,14 +68,12 @@ function boot(): void {
   theme.set(data.settings.theme);
   audio.setVolume(data.settings.volume);
 
-  const config: WorkingConfig = {
-    name: 'Timer',
-    durationSeconds: 300,
-    visualization: 'circle',
-    palette: 'teal',
-    readout: true,
-    warning: { type: 'seconds', value: 60 },
-  };
+  const config: WorkingConfig = defaultConfig();
+  // Which saved preset (if any) the live config currently reflects — null for
+  // an unsaved, ad-hoc timer. Set by launching or editing a tile, cleared by
+  // "start a new timer". Drives which Save action(s) the Current Timer panel
+  // in the sidebar offers (SPEC-adjacent design; see docs/adr/0006).
+  let loadedPresetId: string | null = null;
   timer.setDurationSeconds(config.durationSeconds);
   timer.setWarning(config.warning);
 
@@ -132,6 +138,7 @@ function boot(): void {
 
   const presetList = new PresetList({
     onLaunch: (preset) => launch(preset),
+    onEdit: (preset) => editPreset(preset),
     onPresetsChanged: (presets) => {
       data = { ...data, presets };
       persist();
@@ -165,14 +172,68 @@ function boot(): void {
         showTenths: data.settings.showTenths,
       });
       presetList.render(data.presets);
+      // An imported library may not contain the preset currently loaded for
+      // editing (or any presets with the same ids at all) — the safe default
+      // is to treat the live timer as unsaved rather than risk "Update"
+      // silently overwriting an unrelated imported preset that reused an id.
+      loadedPresetId = null;
       applySidebarCollapsed();
       sidebar.refresh();
       persist();
     },
-    onCreatePreset: () => presetList.openEditor({ ...config }),
     onCollapse: () => setSidebarCollapsed(true),
     getData: () => data,
+    colorsFor: (paletteId) => theme.colorsFor(paletteId),
     storageNotice: () => storageNotice,
+
+    getCurrentTimer: () => ({ name: config.name, palette: config.palette, warning: config.warning }),
+    onCurrentTimerChange: (patch) => {
+      if (patch.name !== undefined) config.name = patch.name;
+      if (patch.palette !== undefined) config.palette = patch.palette;
+      if (patch.warning !== undefined) {
+        config.warning = patch.warning;
+        // The timer's own phase (normal/warning) depends on this, not just
+        // the render — keep them in lockstep rather than only updating config.
+        timer.setWarning(patch.warning);
+      }
+    },
+    getLoadedPresetId: () => loadedPresetId,
+    onSaveAsNew: () => {
+      const created = presetList.saveAsNew({
+        name: config.name,
+        durationSeconds: config.durationSeconds,
+        visualization: config.visualization,
+        palette: config.palette,
+        readout: config.readout,
+        warning: config.warning,
+      });
+      loadedPresetId = created.id;
+      config.name = created.name; // reflect normalizeName()'s trimming, if any
+      sidebar.refresh();
+    },
+    onUpdateLoaded: () => {
+      if (!loadedPresetId) return;
+      presetList.updateExisting(loadedPresetId, {
+        name: config.name,
+        durationSeconds: config.durationSeconds,
+        visualization: config.visualization,
+        palette: config.palette,
+        readout: config.readout,
+        warning: config.warning,
+      });
+      sidebar.refresh();
+    },
+    onDeleteLoaded: async () => {
+      if (!loadedPresetId) return;
+      const deleted = await presetList.deleteById(loadedPresetId);
+      if (!deleted) return;
+      loadedPresetId = null;
+      sidebar.refresh();
+    },
+    onMoveLoaded: (direction) => {
+      if (loadedPresetId) presetList.moveById(loadedPresetId, direction);
+    },
+    onStartFresh: () => startFresh(),
   });
 
   main.append(stage.element, controls.element);
@@ -208,29 +269,59 @@ function boot(): void {
     store.save({ ...data, schemaVersion: data.schemaVersion });
   }
 
-  function launch(preset: Preset): void {
+  /** Load a preset's fields into the live config, without starting it. */
+  function loadIntoConfig(preset: Preset): void {
     config.name = preset.name;
     config.durationSeconds = preset.durationSeconds;
     config.visualization = preset.visualization;
     config.palette = preset.palette;
     config.readout = preset.readout;
     config.warning = preset.warning;
+    loadedPresetId = preset.id;
 
-    // `setDurationSeconds` and `start` are both no-ops while a timer is
-    // already RUNNING (SPEC §5.1 treats the duration as fixed mid-run; you
-    // extend with addTime, you don't retarget it). A teacher picking a
-    // different preset mid-countdown means "switch to this one now", so reset
-    // first — from any state — to guarantee the new preset actually takes.
-    // Without this, the config (and so the palette and hint text) would
-    // switch to the new preset while the running countdown silently kept
+    // `setDurationSeconds` is a no-op while a timer is already RUNNING (SPEC
+    // §5.1 treats the duration as fixed mid-run; you extend with addTime, you
+    // don't retarget it). Loading a different preset — to launch it or to
+    // edit it — means "this is the live timer now", so reset first, from any
+    // state, to guarantee it actually takes. Without this, the config (and so
+    // the palette) would switch while a running countdown silently kept
     // counting down the old one underneath it.
     timer.reset();
     stage.setVisualization(preset.visualization);
     timer.setDurationSeconds(preset.durationSeconds);
     timer.setWarning(preset.warning);
+  }
+
+  function launch(preset: Preset): void {
+    loadIntoConfig(preset);
     audio.unlock(data.settings.soundId);
     timer.start();
     void fullscreen.enter();
+    sidebar.refresh();
+  }
+
+  /**
+   * The pencil on a saved tile: load it into the Current Timer panel for live
+   * editing, on the stage, without starting it or entering full screen — the
+   * distinction from `launch` above (SPEC §4.2's one-click launch stays a
+   * separate, undiluted path). See `docs/adr/0006-live-preset-editing.md`.
+   */
+  function editPreset(preset: Preset): void {
+    loadIntoConfig(preset);
+    if (data.settings.sidebarCollapsed) setSidebarCollapsed(false);
+    sidebar.refresh();
+  }
+
+  /** "Start a new timer": back to a blank, unsaved configuration. */
+  function startFresh(): void {
+    Object.assign(config, defaultConfig());
+    loadedPresetId = null;
+    timer.reset();
+    stage.setVisualization(config.visualization);
+    timer.setDurationSeconds(config.durationSeconds);
+    timer.setWarning(config.warning);
+    if (data.settings.sidebarCollapsed) setSidebarCollapsed(false);
+    sidebar.refresh();
   }
 
   // --------------------------------------------------------------- the loop
@@ -243,7 +334,6 @@ function boot(): void {
   let warningEnteredAt: number | null = null;
   let lastPhase: TimerPhase = 'normal';
   let lastState = timer.state;
-  let lastChromeUpdate = 0;
   let chimePlayed = false;
   let warningCuePlayed = false;
 
@@ -293,20 +383,19 @@ function boot(): void {
       if (data.settings.soundEnabled) audio.playWarningCue();
     }
 
-    if (now - lastChromeUpdate > CHROME_UPDATE_MS) {
-      lastChromeUpdate = now;
-      controls.update(
-        snapshot,
-        {
-          durationSeconds: config.durationSeconds,
-          visualization: config.visualization,
-          readout: config.readout,
-          isFullscreen: fullscreen.isFullscreen,
-          sidebarCollapsed: data.settings.sidebarCollapsed,
-        },
-        stage.supportsReadout,
-      );
-    }
+    // Every frame, not throttled — the diffing inside Controls.update() is
+    // what keeps this cheap; see its doc comment.
+    controls.update(
+      snapshot,
+      {
+        durationSeconds: config.durationSeconds,
+        visualization: config.visualization,
+        readout: config.readout,
+        isFullscreen: fullscreen.isFullscreen,
+        sidebarCollapsed: data.settings.sidebarCollapsed,
+      },
+      stage.supportsReadout,
+    );
 
     requestAnimationFrame(frame);
   }

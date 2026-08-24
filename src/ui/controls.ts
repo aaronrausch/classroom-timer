@@ -2,7 +2,6 @@ import { formatDuration, parseDurationInput } from '../core/timer';
 import type { TimerSnapshot } from '../core/timer';
 import type { VisualizationId } from '../core/presets';
 import { VISUALIZATION_IDS } from '../core/presets';
-import { dotIntervalLabel, dotPlan } from '../views/dots';
 import { icon, iconButton, setButtonIcon } from './icons';
 import { Modal } from './modal';
 
@@ -66,7 +65,6 @@ export class Controls {
   private readonly readoutButton: HTMLButtonElement;
   private readonly durationInput: HTMLInputElement;
   private readonly modeButtons = new Map<VisualizationId, HTMLButtonElement>();
-  private readonly modeHint: HTMLElement;
   private readonly sidebarButton: HTMLButtonElement;
   private readonly callbacks: ControlsCallbacks;
 
@@ -80,6 +78,16 @@ export class Controls {
   };
   private editingDuration = false;
   private helpModal: Modal | null = null;
+
+  // Last-rendered values, so `update()` can skip DOM writes for anything
+  // that hasn't actually changed since the previous frame — see the doc
+  // comment on `update()` itself for why this replaced a wall-clock throttle.
+  private lastToggleState: TimerSnapshot['state'] | null = null;
+  private lastFullscreen: boolean | null = null;
+  private lastVisualization: VisualizationId | null = null;
+  private lastReadout: boolean | null = null;
+  private lastSupportsReadout: boolean | null = null;
+  private lastSidebarCollapsed: boolean | null = null;
 
   constructor(callbacks: ControlsCallbacks) {
     this.callbacks = callbacks;
@@ -204,11 +212,6 @@ export class Controls {
     const utilityGroup = labelledGroup('More', 'controls-utility');
     utilityGroup.row.append(this.sidebarButton, help);
 
-    // The interval a dot stands for changes how a teacher narrates the timer,
-    // so it is stated here rather than left to be inferred (SPEC §5.3C).
-    this.modeHint = document.createElement('p');
-    this.modeHint.className = 'controls-hint';
-
     bar.append(
       durationGroup.element,
       divider(),
@@ -218,67 +221,87 @@ export class Controls {
       divider(),
       utilityGroup.element,
     );
-    this.element.append(bar, this.modeHint);
+    this.element.append(bar);
   }
 
+  /**
+   * Called every animation frame — not throttled. It used to run on a 200ms
+   * wall-clock gate to limit DOM churn, but that meant the play/pause icon,
+   * the duration readout, and everything else here could lag up to 200ms
+   * behind the state it is supposed to reflect: a state change or a click
+   * could sit unacknowledged for a fifth of a second, which read as the
+   * controls "jumping" or "glitching". Calling this every frame instead and
+   * diffing against the last-rendered value (below) costs nothing when
+   * nothing changed, and costs a handful of attribute writes on the frame
+   * something did.
+   */
   update(state: TimerSnapshot, view: ControlsView, supportsReadout: boolean): void {
     this.state = state;
     this.view = view;
 
-    switch (state.state) {
-      case 'running':
-        setButtonIcon(this.toggleButton, 'pause', 'Pause', 44);
-        break;
-      case 'paused':
-        setButtonIcon(this.toggleButton, 'play', 'Resume', 44);
-        break;
-      case 'finished':
-        setButtonIcon(this.toggleButton, 'reset', 'Start again', 44);
-        break;
-      default:
-        setButtonIcon(this.toggleButton, 'play', 'Start', 44);
+    if (state.state !== this.lastToggleState) {
+      this.lastToggleState = state.state;
+      switch (state.state) {
+        case 'running':
+          setButtonIcon(this.toggleButton, 'pause', 'Pause', 44);
+          break;
+        case 'paused':
+          setButtonIcon(this.toggleButton, 'play', 'Resume', 44);
+          break;
+        case 'finished':
+          setButtonIcon(this.toggleButton, 'reset', 'Start again', 44);
+          break;
+        default:
+          setButtonIcon(this.toggleButton, 'play', 'Start', 44);
+      }
+      this.durationInput.readOnly = state.state !== 'idle';
     }
 
-    setButtonIcon(
-      this.fullscreenButton,
-      view.isFullscreen ? 'collapse' : 'expand',
-      view.isFullscreen ? 'Leave full screen' : 'Full screen',
-      30,
-    );
+    if (view.isFullscreen !== this.lastFullscreen) {
+      this.lastFullscreen = view.isFullscreen;
+      setButtonIcon(
+        this.fullscreenButton,
+        view.isFullscreen ? 'collapse' : 'expand',
+        view.isFullscreen ? 'Leave full screen' : 'Full screen',
+        30,
+      );
+    }
 
     if (!this.editingDuration) {
       const shown = state.state === 'idle' ? view.durationSeconds : Math.ceil(state.remainingMs / 1000);
       const text = formatDuration(shown);
+      // formatDuration is cheap; the DOM write it guards is what matters, and
+      // this check already skips it when the second hasn't changed.
       if (this.durationInput.value !== text) this.durationInput.value = text;
     }
-    this.durationInput.readOnly = state.state !== 'idle';
 
-    for (const [id, button] of this.modeButtons) {
-      button.setAttribute('aria-pressed', String(id === view.visualization));
-      button.classList.toggle('is-active', id === view.visualization);
+    if (view.visualization !== this.lastVisualization) {
+      this.lastVisualization = view.visualization;
+      for (const [id, button] of this.modeButtons) {
+        button.setAttribute('aria-pressed', String(id === view.visualization));
+        button.classList.toggle('is-active', id === view.visualization);
+      }
     }
 
     // Hidden rather than silently ignored where it does not apply (SPEC §5.4).
-    this.readoutButton.hidden = !supportsReadout;
-    this.readoutButton.setAttribute('aria-pressed', String(view.readout));
-    this.readoutButton.classList.toggle('is-active', view.readout);
-    this.readoutButton.title = view.readout ? 'Hide numbers' : 'Show numbers';
-    this.readoutButton.setAttribute('aria-label', this.readoutButton.title);
+    if (view.readout !== this.lastReadout || supportsReadout !== this.lastSupportsReadout) {
+      this.lastReadout = view.readout;
+      this.lastSupportsReadout = supportsReadout;
+      this.readoutButton.hidden = !supportsReadout;
+      this.readoutButton.setAttribute('aria-pressed', String(view.readout));
+      this.readoutButton.classList.toggle('is-active', view.readout);
+      this.readoutButton.title = view.readout ? 'Hide numbers' : 'Show numbers';
+      this.readoutButton.setAttribute('aria-label', this.readoutButton.title);
+    }
 
-    this.sidebarButton.setAttribute('aria-pressed', String(!view.sidebarCollapsed));
-    this.sidebarButton.classList.toggle('is-active', !view.sidebarCollapsed);
-    this.sidebarButton.title = view.sidebarCollapsed
-      ? 'Show saved timers and settings'
-      : 'Hide saved timers and settings';
-    this.sidebarButton.setAttribute('aria-label', this.sidebarButton.title);
-
-    if (view.visualization === 'dots') {
-      const plan = dotPlan(view.durationSeconds);
-      this.modeHint.textContent = `${dotIntervalLabel(plan.intervalSeconds)} · ${plan.count} dots`;
-      this.modeHint.hidden = false;
-    } else {
-      this.modeHint.hidden = true;
-      this.modeHint.textContent = '';
+    if (view.sidebarCollapsed !== this.lastSidebarCollapsed) {
+      this.lastSidebarCollapsed = view.sidebarCollapsed;
+      this.sidebarButton.setAttribute('aria-pressed', String(!view.sidebarCollapsed));
+      this.sidebarButton.classList.toggle('is-active', !view.sidebarCollapsed);
+      this.sidebarButton.title = view.sidebarCollapsed
+        ? 'Show saved timers and settings'
+        : 'Hide saved timers and settings';
+      this.sidebarButton.setAttribute('aria-label', this.sidebarButton.title);
     }
   }
 

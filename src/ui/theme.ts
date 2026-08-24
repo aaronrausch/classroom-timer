@@ -14,6 +14,7 @@ export class ThemeController {
   private choice: ThemeChoice = 'system';
   private readonly query: MediaQueryList | null;
   private readonly listeners = new Set<(mode: ThemeMode) => void>();
+  private lastNotifiedMode: ThemeMode | null = null;
 
   constructor(private readonly root: HTMLElement = document.documentElement) {
     this.query =
@@ -60,6 +61,15 @@ export class ThemeController {
     // Native form controls and scrollbars should follow, or the settings panel
     // ends up with a white select on a dark ground.
     this.root.style.colorScheme = mode;
+
+    // Listeners exist to react to an *actual* light/dark flip (e.g. repainting
+    // preset swatches). `set()` is called on every settings change, not just
+    // theme changes — without this guard, changing something as unrelated as
+    // the circle style would still fire every listener, and a listener that
+    // rebuilds a list (as the preset list's did) turned every sidebar click
+    // into a visible full rebuild of unrelated DOM.
+    if (mode === this.lastNotifiedMode) return;
+    this.lastNotifiedMode = mode;
     for (const listener of this.listeners) listener(mode);
   }
 

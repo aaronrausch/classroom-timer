@@ -1,7 +1,7 @@
 import type { VisualizationId } from '../core/presets';
 import { createBar } from '../views/bar';
 import { createCircle } from '../views/circle';
-import type { CircleStyle, CircleTicks } from '../views/circle';
+import type { CircleStyle, CircleTicks, CircleVisualization } from '../views/circle';
 import { createDigits } from '../views/digits';
 import { createDots } from '../views/dots';
 import { Readout } from '../views/readout';
@@ -80,15 +80,25 @@ export class Stage {
   }
 
   setOptions(options: StageOptions): void {
-    const changed =
-      options.circleStyle !== this.options.circleStyle ||
-      options.circleTicks !== this.options.circleTicks ||
-      options.showTenths !== this.options.showTenths;
+    const ticksChanged = options.circleTicks !== this.options.circleTicks;
+    const needsRecreate =
+      options.circleStyle !== this.options.circleStyle || options.showTenths !== this.options.showTenths;
     this.options = options;
-    if (changed && this.visualizationId) {
+
+    if (needsRecreate && this.visualizationId) {
       const current = this.visualizationId;
       this.visualizationId = null;
       this.setVisualization(current);
+      return;
+    }
+
+    // A tick-style change updates in place — see CircleVisualization.setTicks.
+    // Recreating the whole circle for this (as every other option change
+    // does) meant one frame painted a brand-new SVG at its default, full-ring
+    // state before the next render() call corrected it: a visible flash,
+    // worse than the decorative ticks it was meant to change.
+    if (ticksChanged && this.visualizationId === 'circle' && this.visualization) {
+      (this.visualization as CircleVisualization).setTicks(options.circleTicks);
     }
   }
 
