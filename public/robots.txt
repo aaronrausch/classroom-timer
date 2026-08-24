@@ -1,0 +1,5 @@
+# The app collects nothing and has nothing to hide. Crawl it freely.
+# See ROBOTS.md in the repository for guidance aimed at AI coding agents;
+# this file is only for web crawlers.
+User-agent: *
+Allow: /

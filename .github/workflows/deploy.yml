@@ -1,0 +1,63 @@
+name: Deploy to GitHub Pages
+
+# On push to main: install, test, build, deploy. The deploy fails closed —
+# a failing test or type error stops here, before anything reaches a
+# classroom wall (SPEC §10).
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Only one deploy at a time; a new push cancels a stale in-flight one rather
+# than racing it.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Type-check and test
+        run: |
+          npm run typecheck
+          npm test
+
+      - name: Build
+        # GitHub Pages project sites are served from /<repo-name>/, not the
+        # domain root. github.repository is "owner/repo"; the base path only
+        # needs the repo part. See vite.config.ts and docs/DEPLOYMENT.md —
+        # this is the most common first-deploy failure for a static site.
+        env:
+          BASE_PATH: /${{ github.event.repository.name }}/
+        run: npm run build
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

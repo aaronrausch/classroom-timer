@@ -1,0 +1,1013 @@
+/*
+ * Classroom Timer styles.
+ *
+ * Two rules govern almost everything here:
+ *
+ *  - The visualization gets the screen. Chrome is small, quiet, and gone
+ *    entirely once a timer is running on a projector (SPEC §7.1, §5.11).
+ *  - Nothing loops, nothing pulses, nothing flashes. A timer on a wall for six
+ *    hours a day must be calm, and above 3 Hz it becomes a safety issue
+ *    rather than a taste issue (SPEC §5.6, §8).
+ */
+
+:root {
+  /* Overwritten at runtime by ThemeController; these are the light defaults so
+     the page is never unstyled between first paint and first script. */
+  --surface-bg: #f6f7f9;
+  --surface-text: #14181d;
+  --surface-muted: #4a5560;
+  --surface-panel: #ffffff;
+  --surface-border: #c9d1d9;
+
+  --focus-ring: #1a6ef5;
+  --radius: 14px;
+  --gap: clamp(0.5rem, 1.4vmin, 1rem);
+  --transition: 180ms ease;
+
+  /* Minimum interactive target, never smaller (SPEC §7.3). */
+  --target: 48px;
+
+  color-scheme: light dark;
+}
+
+:root[data-theme='dark'] {
+  --focus-ring: #7fb2ff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/*
+ * Any author `display` declaration beats the user agent's [hidden] rule, and
+ * several elements below are grids or flex rows. Without this, `hidden = true`
+ * silently does nothing — which in this app means a completion field covering
+ * an idle timer.
+ */
+[hidden] {
+  display: none !important;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overscroll-behavior: none;
+}
+
+body {
+  background: var(--surface-bg);
+  color: var(--surface-text);
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-size: clamp(15px, 1.6vmin, 18px);
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+}
+
+#app {
+  height: 100dvh;
+  min-height: 100%;
+}
+
+/*
+ * Two columns: a collapsible sidebar (saved timers plus every setting), and a
+ * main column with the stage and the toolbar beneath it. The sidebar's own
+ * width becomes the layout's real constraint, which is exactly what a raw
+ * viewport media query on the toolbar could never see — see the container
+ * query on `.layout-main` below.
+ */
+.layout {
+  /*
+   * Main first, sidebar second — on screen as in the DOM — so the panel sits
+   * on the right, under the toolbar's own sidebar toggle (its rightmost
+   * button). Collapsing shrinks the *second* track to 0.
+   */
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 320px);
+  /*
+   * Without an explicit row track, Grid gives the single implicit row `auto`
+   * sizing, which grows to fit whichever column has the most content — the
+   * sidebar, once its sections add up — rather than respecting the height set
+   * below. The result is a `.layout` taller than the viewport and the whole
+   * page scrolling instead of just the sidebar's own body. `minmax(0, 1fr)`
+   * pins the row to exactly the container's height, so grid items stretch to
+   * fill it and their own `overflow: auto` finally has a real box to clip to.
+   */
+  grid-template-rows: minmax(0, 1fr);
+  height: 100dvh;
+  min-height: 100%;
+  transition: grid-template-columns var(--transition);
+}
+
+.layout-sidebar-collapsed {
+  grid-template-columns: minmax(0, 1fr) 0;
+}
+
+.layout-main {
+  container-type: inline-size;
+  container-name: main;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  min-width: 0;
+  min-height: 0;
+  gap: var(--gap);
+  padding: var(--gap);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Visible focus, everywhere, at a weight that survives a projector. */
+:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+/* ------------------------------------------------------------------- stage */
+
+.stage {
+  position: relative;
+  display: grid;
+  min-height: 0;
+  min-width: 0;
+}
+
+.stage-viz {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  min-width: 0;
+  padding: clamp(0.5rem, 2vmin, 2rem);
+}
+
+.viz {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+/* Circle ------------------------------------------------------------------ */
+
+/*
+ * Colour comes from an inline `stroke="var(--surface-text)"` attribute set
+ * in circle.ts, not from here — a real CSS rule always outranks an SVG
+ * presentation attribute, so this only ever touches opacity, deliberately.
+ */
+.viz-circle-ticks line {
+  opacity: 0.82;
+}
+
+/* Bar --------------------------------------------------------------------- */
+
+.viz-bar {
+  display: grid;
+  align-content: center;
+  width: 100%;
+}
+
+.viz-bar-track {
+  /* Generous height: at least a fifth of the viewport in projector mode, and
+     it grows a little further in the warning state (SPEC §5.3B, §5.5). */
+  --bar-grow: 0;
+  width: 100%;
+  height: calc(20vh + var(--bar-grow) * 4vh);
+  min-height: 90px;
+  overflow: hidden;
+  border-radius: 6px;
+}
+
+.viz-bar-fill {
+  width: 100%;
+  height: 100%;
+  transform-origin: left center;
+  /* scaleX(0) leaves nothing behind: exact at both ends (SPEC §5.3). */
+  transform: scaleX(1);
+  will-change: transform;
+}
+
+/* Dots -------------------------------------------------------------------- */
+
+.viz-dots {
+  width: 100%;
+  height: 100%;
+}
+
+/* Digits ------------------------------------------------------------------ */
+
+.viz-digits {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  padding-bottom: 2.5vh;
+}
+
+.viz-digits-svg {
+  width: 100%;
+  height: 100%;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The subordinate proportion cue, kept well clear of the numerals. */
+.viz-digits-proportion {
+  position: absolute;
+  inset: auto 0 0 0;
+  height: max(6px, 1.1vh);
+  overflow: hidden;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--surface-text) 12%, transparent);
+}
+
+.viz-digits-proportion-fill {
+  width: 100%;
+  height: 100%;
+  transform-origin: left center;
+  transform: scaleX(1);
+}
+
+/* Readout ----------------------------------------------------------------- */
+
+.readout {
+  position: absolute;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  pointer-events: none;
+  /* Clearly subordinate to the graphical visual. If it competed, the teacher
+     should simply have chosen the digits mode (SPEC §5.4). */
+  font-size: clamp(1.4rem, 9vmin, 7rem);
+  line-height: 1;
+}
+
+/* Centre of the ring: the depletion boundary is on the ring itself. */
+.stage-viz[data-viz='circle'] .readout {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+/*
+ * The disc style has no hollow middle: the readout sits directly on the fill
+ * colour instead of the room's background. That pairing (numeral vs fill) is
+ * never contrast-checked — only numeral vs surface is (tests/palettes.test.ts)
+ * — so give it a small surface-coloured backdrop here, reusing that already-
+ * verified pairing rather than trusting numeral-on-fill to work out.
+ */
+.stage-viz[data-viz='circle'][data-circle-style='disc'] .readout {
+  padding: 0.15em 0.5em;
+  border-radius: 0.3em;
+  background: color-mix(in srgb, var(--surface-bg) 88%, transparent);
+}
+
+/* Above the bar, well clear of the travelling edge. */
+.stage-viz[data-viz='bar'] .readout {
+  top: 4%;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+/* Below the grid, in space the grid gives up while the readout is showing. */
+.stage-viz[data-viz='dots'] .readout {
+  bottom: 1%;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: clamp(1.2rem, 7vmin, 5rem);
+}
+
+.stage-viz[data-viz='dots'][data-readout='on'] .viz-dots {
+  height: calc(100% - 8vh);
+}
+
+/* Paused ------------------------------------------------------------------ */
+
+.paused-indicator {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  color: var(--surface-text);
+  /* Persistent and unmistakable from across the room, with no motion at all:
+     a teacher who walked away must be able to see that time is stopped. */
+  background: color-mix(in srgb, var(--surface-bg) 62%, transparent);
+}
+
+.paused-indicator .icon {
+  width: min(28vmin, 260px);
+  height: min(28vmin, 260px);
+  stroke-width: 1.5;
+}
+
+/* Finished ---------------------------------------------------------------- */
+
+.finished-field {
+  /* Fixed, not absolute: the screen commits *fully*. In projector mode the
+     control row still occupies grid space even when faded out, and a
+     completion field that stopped short of the edges would not read as
+     unmistakable from the back of the room (SPEC §5.6). */
+  position: fixed;
+  z-index: 50;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  cursor: pointer;
+  /* A full-viewport colour field plus a glyph: unmistakable without sound and
+     without text, and it stays until dismissed (SPEC §5.6). */
+}
+
+.finished-field .icon {
+  width: min(54vmin, 520px);
+  height: min(54vmin, 520px);
+  stroke-width: 3;
+}
+
+/* One bounded settle, then completely static. Never a loop, never a flash. */
+.finished-field.is-settling .icon {
+  animation: settle 480ms cubic-bezier(0.22, 1, 0.36, 1) 1 both;
+}
+
+@keyframes settle {
+  from {
+    transform: scale(0.82);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* ---------------------------------------------------------------- controls */
+
+/*
+ * One row, centred as a whole beneath the stage — duration, transport,
+ * display, and full screen, each a small labelled cluster separated by a
+ * hairline. Saved timers and every setting live in the sidebar instead, so
+ * this bar never has to grow zones to fill leftover width; it just centres.
+ *
+ * The container query (not a viewport media query) is what keeps it centred
+ * once a sidebar is in the picture: the bar responds to the width of the main
+ * column it actually has, which shrinks when the sidebar opens and grows when
+ * it collapses — a plain `@media` query is blind to that and was exactly what
+ * made the old three-zone bar drift off-centre.
+ */
+.controls {
+  transition: opacity var(--transition);
+}
+
+.controls-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: center;
+  gap: clamp(0.9rem, 2.4vw, 2rem);
+}
+
+.controls-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.controls-group-label {
+  color: var(--surface-muted);
+  font-size: 0.72em;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.controls-group-row {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.controls-utility .controls-group-row {
+  /* Generous separation from the transport, so nothing destructive ever ends
+     up beside reset (SPEC §7.3) — the divider between groups already does
+     most of that work; this just keeps the pair itself snug. */
+  gap: 0.4rem;
+}
+
+.controls-divider {
+  align-self: stretch;
+  width: 1px;
+  margin: 1.7rem 0 0.1rem;
+  background: var(--surface-border);
+}
+
+.controls-hint {
+  flex-basis: 100%;
+  margin: 0.5rem 0 0;
+  color: var(--surface-muted);
+  font-size: 0.9em;
+  text-align: center;
+}
+
+/*
+ * Below a main column of about 640px there is no room for four clusters and
+ * three dividers abreast. Drop the dividers and let the clusters wrap onto
+ * their own lines instead — still centred, just stacked.
+ */
+@container main (max-width: 640px) {
+  .controls-divider {
+    display: none;
+  }
+
+  .controls-bar {
+    row-gap: 1.1rem;
+  }
+}
+
+.icon-button {
+  display: inline-grid;
+  place-items: center;
+  gap: 2px;
+  min-width: var(--target);
+  min-height: var(--target);
+  padding: 0.4rem;
+  border: 2px solid transparent;
+  border-radius: var(--radius);
+  background: var(--surface-panel);
+  color: var(--surface-text);
+  cursor: pointer;
+  transition:
+    background var(--transition),
+    border-color var(--transition),
+    transform var(--transition);
+}
+
+.icon-button:hover {
+  border-color: var(--surface-border);
+}
+
+.icon-button:active {
+  transform: translateY(1px);
+}
+
+.icon-button-quiet {
+  background: transparent;
+}
+
+.icon-button-step {
+  min-width: 56px;
+  font-size: 0.82em;
+  font-weight: 700;
+}
+
+.step-badge {
+  font-variant-numeric: tabular-nums;
+  color: var(--surface-muted);
+}
+
+.icon-button-large {
+  min-width: 62px;
+  min-height: 62px;
+}
+
+.icon-button-primary {
+  min-width: 92px;
+  min-height: 92px;
+  border-color: var(--surface-border);
+}
+
+.icon-button-mode.is-active,
+.chip.is-active {
+  border-color: currentColor;
+  background: color-mix(in srgb, var(--surface-text) 10%, var(--surface-panel));
+}
+
+.duration-input {
+  width: 5.5ch;
+  min-height: var(--target);
+  padding: 0.2rem 0.5rem;
+  border: 2px solid var(--surface-border);
+  border-radius: var(--radius);
+  background: var(--surface-panel);
+  color: var(--surface-text);
+  font: inherit;
+  font-size: clamp(1.4rem, 3.4vmin, 2.2rem);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  text-align: center;
+}
+
+.duration-input[readonly] {
+  border-color: transparent;
+  background: transparent;
+}
+
+/* ----------------------------------------------------------------- sidebar */
+
+.sidebar {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--surface-panel);
+  border-left: 1px solid var(--surface-border);
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap);
+  padding: 1rem 0.75rem 0.75rem 1.1rem;
+}
+
+.sidebar-title {
+  margin: 0;
+  overflow: hidden;
+  font-size: 1.02em;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/*
+ * The grid row above (`minmax(0, 1fr)`) sizes this cell correctly — verified
+ * directly, it is never taller than the sidebar itself. But a flex or grid
+ * item with `overflow-y: auto` set *directly* on it still leaks its unclipped
+ * content height into the document's scrollable area in at least one engine
+ * tested, scrolling the whole page instead of just this panel. Absolute
+ * positioning sidesteps the ambiguity entirely: `.sidebar-body` is sized
+ * strictly from this cell's padding box, nothing else, and that is the one
+ * approach that measured clean under direct testing.
+ */
+.sidebar-body-cell {
+  position: relative;
+  min-height: 0;
+}
+
+.sidebar-body {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1.6rem;
+  overflow-y: auto;
+  padding: 0 1.1rem 1.5rem;
+}
+
+.sidebar-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap);
+  margin-bottom: 0.6rem;
+}
+
+.sidebar-section-title {
+  margin: 0;
+  color: var(--surface-muted);
+  font-size: 0.76em;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.sidebar-new-button {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 0.3rem;
+  min-height: 32px;
+  padding: 0.3rem 0.65rem 0.3rem 0.45rem;
+  border: none;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-text) 10%, var(--surface-panel));
+  color: var(--surface-text);
+  font: inherit;
+  font-size: 0.82em;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.sidebar-new-button:hover {
+  background: color-mix(in srgb, var(--surface-text) 16%, var(--surface-panel));
+}
+
+/* ----------------------------------------------------------------- presets */
+
+.preset-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.preset-tile {
+  position: relative;
+}
+
+/* Large tiles, sized for a confident press with a finger or a whiteboard
+   stylus, where pointer precision is poor (SPEC §5.8, §7.3). Listed as one
+   column in the sidebar, where width is the scarce dimension. */
+.preset-launch {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas:
+    'badge name'
+    'badge duration';
+  align-items: center;
+  gap: 0 0.7rem;
+  width: 100%;
+  min-height: 64px;
+  padding: 0.55rem 2.6rem 0.55rem 0.75rem;
+  border: 2px solid var(--surface-border);
+  border-left: 8px solid var(--preset-accent, var(--surface-border));
+  border-radius: var(--radius);
+  background: var(--surface-panel);
+  color: var(--surface-text);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--transition),
+    transform var(--transition);
+}
+
+.preset-launch:hover {
+  transform: translateX(2px);
+}
+
+.preset-badge {
+  grid-area: badge;
+  display: grid;
+  place-items: center;
+  color: var(--preset-accent, currentColor);
+}
+
+.preset-name {
+  grid-area: name;
+  font-size: 1em;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.preset-duration {
+  grid-area: duration;
+  color: var(--surface-muted);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.92em;
+}
+
+.preset-edit {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0.25rem;
+  background: transparent;
+  transform: translateY(-50%);
+}
+
+.preset-tile.is-dragging {
+  opacity: 0.5;
+}
+
+.preset-tile.is-drop-target .preset-launch {
+  border-color: var(--focus-ring);
+}
+
+/* ------------------------------------------------------------------ modals */
+
+.modal {
+  width: min(560px, calc(100vw - 2rem));
+  max-height: min(90dvh, 760px);
+  padding: 0;
+  border: 2px solid var(--surface-border);
+  border-radius: var(--radius);
+  background: var(--surface-panel);
+  color: var(--surface-text);
+}
+
+.modal::backdrop {
+  background: rgb(0 0 0 / 55%);
+}
+
+.modal-fallback {
+  position: fixed;
+  z-index: 100;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 24px 60px rgb(0 0 0 / 45%);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap);
+  padding: 1rem 1rem 0.5rem;
+}
+
+.modal-title {
+  margin: 0;
+  font-size: 1.2em;
+}
+
+.modal-body {
+  padding: 0.5rem 1rem 1rem;
+}
+
+.modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap);
+  justify-content: flex-end;
+  margin-top: 1.25rem;
+}
+
+.reorder-group {
+  display: flex;
+  gap: 0.35rem;
+  margin-right: auto;
+}
+
+.button {
+  display: inline-grid;
+  place-items: center;
+  min-height: var(--target);
+  padding: 0.5rem 1.1rem;
+  border: 2px solid var(--surface-border);
+  border-radius: var(--radius);
+  background: var(--surface-panel);
+  color: var(--surface-text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.button-primary {
+  border-color: currentColor;
+  background: color-mix(in srgb, var(--surface-text) 12%, var(--surface-panel));
+}
+
+/* Destructive actions look destructive and never sit next to reset. */
+.button-danger {
+  border-color: currentColor;
+  color: #a3200f;
+}
+
+:root[data-theme='dark'] .button-danger {
+  color: #ff9d84;
+}
+
+.field,
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap);
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--surface-border);
+  flex-wrap: wrap;
+}
+
+.settings-row-stacked {
+  align-items: flex-start;
+}
+
+.field-label,
+.settings-label {
+  font-weight: 600;
+}
+
+.field-hint {
+  margin: 0.6rem 0 0;
+  color: var(--surface-muted);
+}
+
+.text-input,
+.select-input {
+  min-height: var(--target);
+  padding: 0.4rem 0.6rem;
+  border: 2px solid var(--surface-border);
+  border-radius: var(--radius);
+  background: var(--surface-bg);
+  color: var(--surface-text);
+  font: inherit;
+}
+
+.text-input {
+  flex: 1 1 12rem;
+}
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.chip {
+  display: inline-grid;
+  place-items: center;
+  min-width: var(--target);
+  min-height: var(--target);
+  padding: 0.4rem;
+  border: 2px solid var(--surface-border);
+  border-radius: var(--radius);
+  background: var(--surface-panel);
+  color: var(--surface-text);
+  cursor: pointer;
+}
+
+.chip-wide {
+  min-width: 72px;
+}
+
+/*
+ * A swatch shows both palette roles, because the pair is what matters — a
+ * teacher is choosing a contrast, not a colour. The selector is doubled so the
+ * gradient outranks the generic active-chip background, and selection is shown
+ * with a ring instead, which would otherwise paint over the swatch itself.
+ */
+.chip.chip-swatch {
+  background: linear-gradient(
+    135deg,
+    var(--swatch-fill) 0 50%,
+    var(--swatch-track) 50% 100%
+  );
+}
+
+.chip.chip-swatch.is-active {
+  outline: 3px solid var(--surface-text);
+  outline-offset: 2px;
+}
+
+.settings-notice,
+.settings-privacy {
+  margin: 1rem 0 0;
+  color: var(--surface-muted);
+  font-size: 0.95em;
+}
+
+.shortcut-list {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.5rem 1rem;
+  margin: 0;
+  align-items: center;
+}
+
+.shortcut-list dt {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.shortcut-list dd {
+  margin: 0;
+  color: var(--surface-muted);
+}
+
+kbd {
+  display: inline-block;
+  min-width: 2ch;
+  padding: 0.15rem 0.45rem;
+  border: 1px solid var(--surface-border);
+  border-bottom-width: 3px;
+  border-radius: 6px;
+  background: var(--surface-bg);
+  font-family: inherit;
+  font-size: 0.9em;
+  font-weight: 700;
+  text-align: center;
+}
+
+/* -------------------------------------------------------- projector mode */
+
+/*
+ * The fallback layout for browsers where the Fullscreen API is blocked — which
+ * is routine on interactive whiteboards. The result is the same full-bleed
+ * timer, just inside the browser window (SPEC §5.11).
+ */
+:root[data-projector='true'] .sidebar {
+  display: none;
+}
+
+:root[data-projector='true'] .layout {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+:root[data-projector='true'] .layout-main {
+  padding: 0;
+  gap: 0;
+}
+
+:root[data-projector='true'] .controls {
+  padding: 0 0 var(--gap);
+}
+
+/* After three seconds of stillness, what remains is the visualization and
+   nothing else. Any movement or key press brings it straight back. */
+:root[data-projector='true'][data-chrome='hidden'] .controls {
+  opacity: 0;
+  pointer-events: none;
+}
+
+:root[data-projector='true'][data-chrome='hidden'] {
+  cursor: none;
+}
+
+/* --------------------------------------------------------- user preferences */
+
+/*
+ * Reduced motion is not a degraded mode: everything still works, the depletion
+ * simply steps once per second and nothing eases (SPEC §8). The stepping itself
+ * is handled in the views; this removes the rest.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .preset-launch:hover,
+  .icon-button:active {
+    transform: none;
+  }
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --surface-border: currentColor;
+  }
+
+  .icon-button,
+  .chip,
+  .button,
+  .preset-launch {
+    border-color: currentColor;
+  }
+
+  .viz-circle-ticks line {
+    opacity: 1;
+  }
+}
+
+/* Short, wide projector geometry: reclaim vertical space from the chrome. */
+@media (max-height: 620px) {
+  .icon-button-primary {
+    min-width: 72px;
+    min-height: 72px;
+  }
+}
+
+/*
+ * Narrow viewports (a tablet propped up, a small laptop) cannot afford a fixed
+ * 320px sidebar competing with the stage. Below that, the sidebar overlays
+ * instead of sharing the grid column, so opening it never squeezes the timer
+ * down to nothing.
+ */
+@media (max-width: 720px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sidebar {
+    position: fixed;
+    z-index: 40;
+    /* Anchored to the right edge, matching the sidebar's normal position. */
+    inset: 0 0 0 auto;
+    width: min(320px, 86vw);
+    box-shadow: 0 12px 40px rgb(0 0 0 / 30%);
+  }
+
+  .layout-sidebar-collapsed .sidebar {
+    width: 0;
+    box-shadow: none;
+  }
+}

@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Classroom Timer</title>
+    <meta
+      name="description"
+      content="A full-screen visual countdown timer for classroom projectors and whiteboards. No accounts, no network, no student data."
+    />
+    <!--
+      No third-party scripts, no fonts from a CDN, no analytics, ever.
+      This is a promise the project makes to school IT and safeguarding leads,
+      and it is enforced by review rather than by configuration (SPEC §8.1).
+    -->
+    <meta name="theme-color" content="#101418" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f6f7f9" media="(prefers-color-scheme: light)" />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./icons/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+  </head>
+  <body>
+    <div id="app"></div>
+    <noscript>
+      <p style="padding: 2rem; font: 1.25rem/1.5 system-ui, sans-serif">
+        This timer needs JavaScript. It runs entirely in your browser and sends nothing anywhere.
+      </p>
+    </noscript>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
