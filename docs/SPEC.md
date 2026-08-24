@@ -348,9 +348,10 @@ run forever.
 
 - `[MUST]` One-press full-screen via the Fullscreen API, with graceful fallback to a
   maximised in-page layout where the API is blocked.
-- `[MUST]` In full-screen while running, all chrome fades out after 3 seconds of pointer
+- `[MUST]` While running, all chrome fades out after 1.5 seconds of pointer
   inactivity and returns on any pointer movement or key press. What remains is the
-  visualization and nothing else.
+  visualization and nothing else. Applies in full-screen and in normal windowed
+  mode alike, not only full-screen.
 - `[MUST]` The layout is designed for **projector aspect ratios** (16:9 and 4:3) and remains
   correct on interactive whiteboards, which are frequently 4:3 or an unusual resolution.
 - `[SHOULD]` Attempt to inhibit screen sleep during a running timer via the Screen Wake Lock

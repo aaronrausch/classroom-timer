@@ -187,8 +187,12 @@ export class Controls {
 
     this.readoutButton = iconButton({
       label: 'Show numbers',
-      name: 'vizDigits',
-      className: 'icon-button-mode',
+      name: 'readoutNumbers',
+      // A distinct sub-group, not a fifth mode: this toggles an overlay on
+      // top of whichever mode is active, rather than selecting one. The
+      // divider (and its own icon, above) is what stops it from reading as a
+      // duplicate of the Digits mode button beside it.
+      className: 'icon-button-mode controls-readout-toggle',
       onClick: () => this.callbacks.onToggleReadout(),
     });
     this.readoutButton.setAttribute('aria-pressed', 'true');

@@ -76,9 +76,14 @@ src/
     icons.ts             The single bundled icon set (inline SVG, no font,
                        no CDN) and the iconButton() helper that guarantees
                        every icon-only control has a real accessible name.
-    palettes.ts          The six curated palettes, each authored (not
-                       derived) for both themes, plus the WCAG contrast
-                       arithmetic tests/palettes.test.ts checks them against.
+    palettes.ts          The fifteen curated palettes, each authored (not
+                       derived) for both themes; the custom/gradient colour
+                       derivation (deriveCustomPalette,
+                       deriveCustomGradientPalette) that runs the same
+                       contrast arithmetic algorithmically for a teacher's
+                       own hex; and the WCAG contrast arithmetic
+                       tests/palettes.test.ts checks all of it against. See
+                       docs/adr/0007-gradient-themes.md.
     modal.ts             A <dialog>-based modal with a hand-rolled fallback,
                        and the confirm-before-delete dialog.
 

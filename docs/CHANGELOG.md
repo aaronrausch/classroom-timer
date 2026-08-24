@@ -34,6 +34,30 @@ this project uses [Semantic Versioning](https://semver.org/).
   See [docs/adr/0006-live-preset-editing.md](adr/0006-live-preset-editing.md).
 
 ### Changed
+- The custom colour picker was redesigned: swatches (curated and custom) are
+  now plain solid colour rather than a diagonal fill/track split, "Custom
+  color" is a dedicated full-width row instead of a stray extra grid cell,
+  the expanded picker has more breathing room, and Gradient mode now offers
+  five ready-made gradient presets (Sunset, Ocean, Forest, Fire, Dusk) as
+  starting points.
+- Circle ticks icons redesigned: twelve evenly-spaced marks for "Clock
+  positions" (matching a real analogue clock face) and a deliberately
+  irregular spread for "This timer's intervals", both clearer at a glance
+  than the previous versions.
+- The numeral-overlay toggle in the toolbar's Display group got its own icon
+  and a light divider, so it no longer looks like a duplicate of the Digits
+  mode button beside it.
+- Sidebar rows with several icon choices (Theme, Circle style, Circle ticks,
+  Chime) now always put the label on its own line above the choices, so
+  every such row lines up the same way regardless of how many choices it
+  has or how long its label is — previously some fit next to their label
+  (right-aligned) and some wrapped below it (left-aligned), depending on
+  width.
+- Chrome now fades out after 1.5 seconds of inactivity instead of 3.
+- "Colour" was American-English "Color" in the one place it was visible in
+  the UI (the sidebar's colour-picker label and its screen-reader text);
+  internal code, comments, and docs (including SPEC.md) still use British
+  spelling throughout and were left as they were.
 - Every timer now defaults to a "last 10%" warning threshold, replacing the
   previous fixed 60-second default, so shorter timers (a 2-minute exit
   ticket) still warn at a sensible point instead of the whole thing being
@@ -64,6 +88,9 @@ this project uses [Semantic Versioning](https://semver.org/).
   fixing visible jank/lag when clicking sidebar controls.
 - Changing the circle tick style no longer briefly flashes the whole ring to
   its default state; only the tick marks themselves update.
+- Changing "Tenths under ten seconds" in Digits mode no longer flashes the
+  numerals — the same class of fix as the tick-style one above, applied to
+  the digits visualization's own setting.
 - Removed the live "One dot per X seconds · N dots" hint from under the
   toolbar; the same information is still shown while a timer is loaded for
   editing.

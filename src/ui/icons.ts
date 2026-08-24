@@ -52,17 +52,45 @@ const PATHS: Record<string, string> = {
   vizBar: '<rect x="2.5" y="8.5" width="19" height="7" rx="1.6"/><path d="M2.5 12h11" stroke-width="6" stroke-linecap="butt"/>',
   vizDots: '<circle cx="6" cy="8.5" r="2.4"/><circle cx="12" cy="8.5" r="2.4"/><circle cx="18" cy="8.5" r="2.4"/><circle cx="6" cy="15.5" r="2.4"/><circle cx="12" cy="15.5" r="2.4"/><circle cx="18" cy="15.5" r="2.4"/>',
   vizDigits: '<rect x="2.5" y="5" width="19" height="14" rx="2.2"/><path d="M7 9v6M17 9v6"/><path d="M12 10h.01M12 14h.01"/>',
-  // Circle tick styles: no ticks, twelve clock-face marks, marks derived
-  // from the timer's own duration (drawn as an irregular ruler to read as
-  // distinct from the fixed twelve-mark clock icon at a glance).
+  // Circle tick styles: no ticks, twelve clock-face marks (one line per hour,
+  // rotated with `transform` rather than hand-plotted, exactly like the real
+  // ticks circle.ts draws), marks derived from the timer's own duration
+  // (irregular angles and lengths, so it reads as "measured", not "clock",
+  // at a glance).
   ticksNone: '<circle cx="12" cy="12" r="8.5"/>',
   // A solid disc, for the "Filled" circle style — distinct from the dot-grid
   // icon, which is a different mode entirely and was a confusing stand-in.
   circleFilled: '<circle cx="12" cy="12" r="8.5" fill="currentColor" stroke="none"/>',
   ticksClock:
-    '<circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v2.3M20.5 12h-2.3M12 20.5v-2.3M3.5 12h2.3" stroke-width="2.4"/><path d="M17.7 6.3l-1.4 1.7M17.7 17.7l-1.4-1.7M6.3 17.7l1.4-1.7M6.3 6.3l1.4 1.7"/>',
+    '<circle cx="12" cy="12" r="8.5"/>' +
+    '<line x1="12" y1="3.1" x2="12" y2="4.9" stroke-width="2.3"/>' +
+    '<line x1="12" y1="3.1" x2="12" y2="5.4" stroke-width="1.2" transform="rotate(30 12 12)"/>' +
+    '<line x1="12" y1="3.1" x2="12" y2="5.4" stroke-width="1.2" transform="rotate(60 12 12)"/>' +
+    '<line x1="12" y1="3.1" x2="12" y2="4.9" stroke-width="2.3" transform="rotate(90 12 12)"/>' +
+    '<line x1="12" y1="3.1" x2="12" y2="5.4" stroke-width="1.2" transform="rotate(120 12 12)"/>' +
+    '<line x1="12" y1="3.1" x2="12" y2="5.4" stroke-width="1.2" transform="rotate(150 12 12)"/>' +
+    '<line x1="12" y1="3.1" x2="12" y2="4.9" stroke-width="2.3" transform="rotate(180 12 12)"/>' +
+    '<line x1="12" y1="3.1" x2="12" y2="5.4" stroke-width="1.2" transform="rotate(210 12 12)"/>' +
+    '<line x1="12" y1="3.1" x2="12" y2="5.4" stroke-width="1.2" transform="rotate(240 12 12)"/>' +
+    '<line x1="12" y1="3.1" x2="12" y2="4.9" stroke-width="2.3" transform="rotate(270 12 12)"/>' +
+    '<line x1="12" y1="3.1" x2="12" y2="5.4" stroke-width="1.2" transform="rotate(300 12 12)"/>' +
+    '<line x1="12" y1="3.1" x2="12" y2="5.4" stroke-width="1.2" transform="rotate(330 12 12)"/>',
   ticksInterval:
-    '<circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v2.3M18.5 6.7l-1.3 1.9M20.5 13.2h-2.4M15.7 19.6l-1.1-2.1M8.5 20l.6-2.3M4.7 15.9l1.9-1.3" stroke-width="1.6"/>',
+    '<circle cx="12" cy="12" r="8.5"/>' +
+    '<line x1="12" y1="3.1" x2="12" y2="5.4" stroke-width="2.1"/>' +
+    '<line x1="12" y1="3.1" x2="12" y2="5.7" stroke-width="1.1" transform="rotate(40 12 12)"/>' +
+    '<line x1="12" y1="3.1" x2="12" y2="5.7" stroke-width="1.1" transform="rotate(75 12 12)"/>' +
+    '<line x1="12" y1="3.1" x2="12" y2="5.4" stroke-width="2.1" transform="rotate(130 12 12)"/>' +
+    '<line x1="12" y1="3.1" x2="12" y2="5.7" stroke-width="1.1" transform="rotate(195 12 12)"/>' +
+    '<line x1="12" y1="3.1" x2="12" y2="5.4" stroke-width="2.1" transform="rotate(250 12 12)"/>' +
+    '<line x1="12" y1="3.1" x2="12" y2="5.7" stroke-width="1.1" transform="rotate(300 12 12)"/>' +
+    '<line x1="12" y1="3.1" x2="12" y2="5.7" stroke-width="1.1" transform="rotate(340 12 12)"/>',
+  // The numeric-overlay toggle: a plain "12" glyph. Deliberately unrelated to
+  // vizDigits (a rectangle standing in for the digits *mode*) — this toggles
+  // a numeral overlay on top of whichever graphical mode is active, a
+  // different control that used to share vizDigits's icon and read as the
+  // same button twice.
+  readoutNumbers: '<path d="M6.4 9.3 8.6 7.4V16.6"/><path d="M13.2 9.6a2.6 2.6 0 1 1 4.6 1.7L13.3 16.6h4.9"/>',
 };
 
 export type IconName = keyof typeof PATHS | string;

@@ -451,6 +451,28 @@ body {
   justify-content: center;
 }
 
+/*
+ * A light in-row divider ahead of the numeral-overlay toggle, so it reads as
+ * its own thing next to the four mode buttons rather than a fifth mode. A
+ * pseudo-element in the extra margin, not a border/padding on the button
+ * itself — the button's own box stays untouched, so its icon stays centred
+ * exactly like every other icon-button instead of shifting off-centre.
+ */
+.controls-readout-toggle {
+  position: relative;
+  margin-left: calc(0.5rem + var(--gap));
+}
+
+.controls-readout-toggle::before {
+  content: '';
+  position: absolute;
+  top: 15%;
+  bottom: 15%;
+  left: calc(-0.25rem - var(--gap) / 2);
+  width: 1px;
+  background: var(--surface-border);
+}
+
 .controls-utility .controls-group-row {
   /* Generous separation from the transport, so nothing destructive ever ends
      up beside reset (SPEC §7.3) — the divider between groups already does
@@ -840,8 +862,17 @@ body {
   flex-wrap: wrap;
 }
 
+/*
+ * Label on its own line, control on the next, both flush left. Used for any
+ * row whose control is a multi-item chip group (choiceRow) rather than a
+ * single input/select/toggle — see the comment on choiceRow() in sidebar.ts
+ * for why those specifically need this instead of the label-left/control-
+ * right layout every other row uses.
+ */
 .settings-row-stacked {
-  align-items: flex-start;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.5rem;
 }
 
 /* Consistent breathing room below the last field, whether it holds a single
@@ -890,20 +921,22 @@ body {
 }
 
 /*
- * The colour picker specifically: with 15 curated palettes plus the custom
- * swatch, this wraps to several rows where the other chip-rows (theme,
- * circle style, chime) stay to one or two. Five per row is the better fit
- * for the sidebar's own width than three — three-per-row would leave each
- * swatch conspicuously wide for no reason — so this pins that explicitly
- * rather than leaving it to however many chips happen to fit, and gives
- * row-to-row spacing a little more room than chip-to-chip spacing so the
- * grid reads as organised rows, not a loose wrapped paragraph.
+ * The colour picker specifically: fifteen curated palettes wrap to several
+ * rows where the other chip-rows (theme, circle style, chime) stay to one.
+ * Five per row is the better fit for the sidebar's own width than three —
+ * three-per-row would leave each swatch conspicuously wide for no reason —
+ * so this pins that explicitly rather than leaving it to however many chips
+ * happen to fit, and gives row-to-row spacing a little more room than
+ * chip-to-chip spacing so the grid reads as organised rows, not a loose
+ * wrapped paragraph. Fifteen is exactly three full rows — the custom colour
+ * trigger is deliberately not a sixteenth grid cell (see sidebar.ts), so
+ * this grid is never left with a lone stranded item on a near-empty row.
  */
-.chip-row-colours {
+.chip-row-colors {
   gap: 0.55rem 0.4rem;
 }
 
-.chip-row-colours .chip-swatch {
+.chip-row-colors .chip-swatch {
   flex: 0 0 calc((100% - 4 * 0.4rem) / 5);
 }
 
@@ -925,17 +958,14 @@ body {
 }
 
 /*
- * A swatch shows both palette roles, because the pair is what matters — a
- * teacher is choosing a contrast, not a colour. The selector is doubled so the
- * gradient outranks the generic active-chip background, and selection is shown
- * with a ring instead, which would otherwise paint over the swatch itself.
+ * A plain solid swatch: the colour a teacher actually recognises the
+ * palette by (what depletes) is `fill`; the track is a fixed neutral in
+ * every palette (see palettes.ts), not part of a palette's identity, so a
+ * two-colour split swatch mostly just added visual noise a solid one
+ * doesn't.
  */
 .chip.chip-swatch {
-  background: linear-gradient(
-    135deg,
-    var(--swatch-fill) 0 50%,
-    var(--swatch-track) 50% 100%
-  );
+  background: var(--swatch-fill);
 }
 
 .chip.chip-swatch.is-active {
@@ -944,40 +974,93 @@ body {
 }
 
 /*
- * The custom trigger reuses the same fill/track gradient background as a
- * live preview of whatever hex(es) are currently set — see syncPaletteButtons
- * in sidebar.ts — so its own icon needs to read against *any* colour pair,
- * not one known in advance. `difference` blending guarantees that: it can't
- * disappear into the background the way a fixed icon colour eventually would.
+ * The "Custom color" trigger: a labelled row of its own below the swatch
+ * grid, not a sixteenth grid cell — see the comment in sidebar.ts for why a
+ * grid cell left it stranded alone on a near-empty row. Dashed while
+ * inactive to read as "add", solid once a custom colour is actually the
+ * live selection.
  */
-.chip-swatch-custom {
-  border-style: dashed;
+.custom-color-trigger {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
+  min-height: var(--target);
+  margin-top: 0.7rem;
+  padding: 0.5rem 0.9rem;
+  border: 2px dashed var(--surface-border);
+  border-radius: var(--radius);
+  background: var(--surface-panel);
+  color: var(--surface-text);
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
 }
 
-.chip-swatch-custom svg {
-  color: #fff;
-  mix-blend-mode: difference;
+.custom-color-trigger:hover {
+  border-color: currentColor;
 }
 
-.custom-colour-panel {
+.custom-color-trigger.is-active {
+  border-style: solid;
+  border-color: currentColor;
+  background: color-mix(in srgb, var(--surface-text) 8%, var(--surface-panel));
+}
+
+.custom-color-trigger-swatch {
+  flex: none;
+  width: 1.7rem;
+  height: 1.7rem;
+  border: 1px solid var(--surface-border);
+  border-radius: 50%;
+  background: var(--surface-bg);
+}
+
+.custom-color-trigger-label {
+  flex: 1 1 auto;
+}
+
+.custom-color-trigger-chevron {
+  flex: none;
+  transition: transform var(--transition);
+}
+
+.custom-color-trigger.is-active .custom-color-trigger-chevron {
+  transform: rotate(180deg);
+}
+
+/*
+ * The expanded picker: visually a nested panel (its own border and tint)
+ * rather than more rows crammed straight into the field list above it, with
+ * enough internal breathing room that "Solid/Gradient", the hex fields, and
+ * the gradient presets each read as a distinct group.
+ */
+.custom-color-panel {
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
-  padding: 0.2rem 0 0.6rem;
+  gap: 1rem;
+  margin-top: 0.75rem;
+  padding: 0.9rem;
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--surface-text) 4%, transparent);
 }
 
-.custom-colour-row {
-  padding: 0.3rem 0;
-  border-bottom: none;
+.custom-color-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap);
 }
 
-.custom-colour-controls {
+.custom-color-controls {
   display: flex;
   align-items: center;
   gap: 0.5rem;
 }
 
-.colour-input {
+.color-input {
   appearance: none;
   -webkit-appearance: none;
   width: 2.4rem;
@@ -990,16 +1073,16 @@ body {
   cursor: pointer;
 }
 
-.colour-input::-webkit-color-swatch-wrapper {
+.color-input::-webkit-color-swatch-wrapper {
   padding: 2px;
 }
 
-.colour-input::-webkit-color-swatch {
+.color-input::-webkit-color-swatch {
   border: none;
   border-radius: calc(var(--radius) - 2px);
 }
 
-.colour-input::-moz-color-swatch {
+.color-input::-moz-color-swatch {
   border: none;
   border-radius: calc(var(--radius) - 2px);
 }
@@ -1008,6 +1091,23 @@ body {
   flex: 0 1 8rem;
   font-family: ui-monospace, 'SF Mono', 'Cascadia Code', Consolas, monospace;
   text-transform: lowercase;
+}
+
+/* Smooth two-stop gradients, not the hard-edge triangle split the palette
+   swatches used to use — these are a real preview of what picking one does. */
+.custom-color-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.custom-color-preset {
+  width: 2.4rem;
+  height: 2.4rem;
+  padding: 0;
+  border: 2px solid var(--surface-border);
+  border-radius: var(--radius);
+  cursor: pointer;
 }
 
 .settings-notice,

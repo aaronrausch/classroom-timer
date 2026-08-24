@@ -3,6 +3,7 @@ import { createBar } from '../views/bar';
 import { createCircle } from '../views/circle';
 import type { CircleStyle, CircleTicks, CircleVisualization } from '../views/circle';
 import { createDigits } from '../views/digits';
+import type { DigitsVisualization } from '../views/digits';
 import { createDots } from '../views/dots';
 import { Readout } from '../views/readout';
 import type { RenderState, Visualization } from '../views/types';
@@ -94,8 +95,10 @@ export class Stage {
 
   setOptions(options: StageOptions): void {
     const ticksChanged = options.circleTicks !== this.options.circleTicks;
-    const needsRecreate =
-      options.circleStyle !== this.options.circleStyle || options.showTenths !== this.options.showTenths;
+    const showTenthsChanged = options.showTenths !== this.options.showTenths;
+    // Style is baked into the circle at construction (radius, stroke width),
+    // so only that one still needs a full recreate.
+    const needsRecreate = options.circleStyle !== this.options.circleStyle;
     this.options = options;
 
     if (needsRecreate && this.visualizationId) {
@@ -105,13 +108,16 @@ export class Stage {
       return;
     }
 
-    // A tick-style change updates in place — see CircleVisualization.setTicks.
-    // Recreating the whole circle for this (as every other option change
-    // does) meant one frame painted a brand-new SVG at its default, full-ring
-    // state before the next render() call corrected it: a visible flash,
-    // worse than the decorative ticks it was meant to change.
+    // Both of these update in place rather than recreating the visualization
+    // (see CircleVisualization.setTicks / DigitsVisualization.setShowTenths).
+    // Recreating for either one meant a frame painted a brand-new SVG at its
+    // default state before the next render() call corrected it: a visible
+    // flash, worse than the setting change it was meant to reflect.
     if (ticksChanged && this.visualizationId === 'circle' && this.visualization) {
       (this.visualization as CircleVisualization).setTicks(options.circleTicks);
+    }
+    if (showTenthsChanged && this.visualizationId === 'digits' && this.visualization) {
+      (this.visualization as DigitsVisualization).setShowTenths(options.showTenths);
     }
   }
 

@@ -31,6 +31,17 @@ const WARNING_OPTIONS: Array<{ label: string; value: WarningThreshold }> = [
   { label: 'Last 25%', value: { type: 'percent', value: 25 } },
 ];
 
+/** A handful of starting points for gradient mode, not a fixed palette of
+ * their own — picking one just fills in the two hex fields, which stay
+ * freely editable afterward like any other custom colour. */
+const GRADIENT_PRESETS: ReadonlyArray<{ label: string; from: string; to: string }> = [
+  { label: 'Sunset', from: '#fb923c', to: '#ec4899' },
+  { label: 'Ocean', from: '#0ea5e9', to: '#6366f1' },
+  { label: 'Forest', from: '#22c55e', to: '#0d9488' },
+  { label: 'Fire', from: '#f59e0b', to: '#dc2626' },
+  { label: 'Dusk', from: '#6366f1', to: '#d946ef' },
+];
+
 /**
  * The three preset fields that had no live home before this panel existed —
  * duration, visualization and the numeric readout are already live-editable
@@ -100,6 +111,8 @@ export class Sidebar {
   private actionsContainer!: HTMLElement;
 
   private customSwatchButton!: HTMLButtonElement;
+  private customTriggerSwatch!: HTMLElement;
+  private customTriggerChevron!: SVGSVGElement;
   private customPanel!: HTMLElement;
   private customPanelOpen = false;
   private customMode: 'solid' | 'gradient' = 'solid';
@@ -111,6 +124,7 @@ export class Sidebar {
   private customToInput!: HTMLInputElement;
   private customToHexInput!: HTMLInputElement;
   private customToRow!: HTMLElement;
+  private customPresetsRow!: HTMLElement;
 
   constructor(
     private readonly presetList: PresetList,
@@ -209,44 +223,68 @@ export class Sidebar {
       return input;
     });
 
-    const paletteField = labelledField('Colour', () => {
-      const group = document.createElement('div');
-      group.className = 'chip-row chip-row-colours';
-      for (const option of paletteOptions()) {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'chip chip-swatch';
-        button.setAttribute('aria-label', option.label);
-        button.title = option.label;
-        const colors = this.callbacks.colorsFor(option.id);
-        button.style.setProperty('--swatch-fill', colors.fill);
-        button.style.setProperty('--swatch-track', colors.track);
-        button.addEventListener('click', () => {
-          this.callbacks.onCurrentTimerChange({ palette: option.id });
-          this.customPanelOpen = false;
-          this.syncPaletteButtons();
-        });
-        this.paletteButtons.set(option.id, button);
-        group.append(button);
-      }
+    const paletteField = document.createElement('div');
+    paletteField.className = 'field settings-row-stacked';
+    const paletteLabel = document.createElement('span');
+    paletteLabel.className = 'field-label';
+    paletteLabel.textContent = 'Color';
 
-      this.customSwatchButton = document.createElement('button');
-      this.customSwatchButton.type = 'button';
-      this.customSwatchButton.className = 'chip chip-swatch chip-swatch-custom';
-      this.customSwatchButton.setAttribute('aria-label', 'Custom colour');
-      this.customSwatchButton.title = 'Custom colour';
-      this.customSwatchButton.append(icon('plus', 16));
-      this.customSwatchButton.addEventListener('click', () => {
-        this.customPanelOpen = true;
-        // Opening it is also choosing it — a picker you have to open but that
-        // does not yet apply anything would show a colour on the stage that
-        // does not match the panel, right when the panel first appears.
-        this.applyCustomColor();
+    const swatchGroup = document.createElement('div');
+    swatchGroup.className = 'chip-row chip-row-colors';
+    swatchGroup.setAttribute('role', 'group');
+    swatchGroup.setAttribute('aria-label', 'Color');
+    for (const option of paletteOptions()) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'chip chip-swatch';
+      button.setAttribute('aria-label', option.label);
+      button.title = option.label;
+      button.style.setProperty('--swatch-fill', this.callbacks.colorsFor(option.id).fill);
+      button.addEventListener('click', () => {
+        this.callbacks.onCurrentTimerChange({ palette: option.id });
+        this.customPanelOpen = false;
         this.syncPaletteButtons();
       });
-      group.append(this.customSwatchButton);
-      return group;
+      this.paletteButtons.set(option.id, button);
+      swatchGroup.append(button);
+    }
+
+    // A separate, full-width row rather than one more grid cell: sixteen
+    // items in a five-per-row grid always leaves this one stranded alone on
+    // its own near-empty row (16 = 3 rows of 5, plus one). It also is not
+    // really "one more colour" the way the curated fifteen are — it opens a
+    // whole picker — so a labelled row of its own is the honest affordance.
+    this.customSwatchButton = document.createElement('button');
+    this.customSwatchButton.type = 'button';
+    this.customSwatchButton.className = 'custom-color-trigger';
+    // Explicit rather than relying on the visible text content: every other
+    // icon-bearing control in this file names itself the same way (see
+    // iconButton in icons.ts), and this button mixes an aria-hidden swatch
+    // and chevron in with that text — safer to say so directly.
+    this.customSwatchButton.setAttribute('aria-label', 'Custom color');
+    this.customSwatchButton.setAttribute('aria-expanded', 'false');
+    this.customTriggerSwatch = document.createElement('span');
+    this.customTriggerSwatch.className = 'custom-color-trigger-swatch';
+    this.customTriggerSwatch.setAttribute('aria-hidden', 'true');
+    const triggerLabel = document.createElement('span');
+    triggerLabel.className = 'custom-color-trigger-label';
+    triggerLabel.textContent = 'Custom color';
+    this.customTriggerChevron = icon('chevronDown', 16);
+    this.customTriggerChevron.classList.add('custom-color-trigger-chevron');
+    this.customSwatchButton.append(this.customTriggerSwatch, triggerLabel, this.customTriggerChevron);
+    this.customSwatchButton.addEventListener('click', () => {
+      this.customPanelOpen = !this.customPanelOpen;
+      // Opening it is also choosing it — a picker you can open without it
+      // applying anything would show a colour on the stage that does not
+      // match the panel the moment it appears. Collapsing it again, once a
+      // custom colour is already the live selection, is purely visual —
+      // syncPaletteButtons keeps it open regardless, since the colour it
+      // would be hiding is still the one actually in use.
+      if (this.customPanelOpen) this.applyCustomColor();
+      this.syncPaletteButtons();
     });
+
+    paletteField.append(paletteLabel, swatchGroup);
 
     const warningField = labelledField('Warn at', () => {
       const select = document.createElement('select');
@@ -271,6 +309,7 @@ export class Sidebar {
       heading,
       nameField,
       paletteField,
+      this.customSwatchButton,
       this.buildCustomColorPanel(),
       warningField,
       this.actionsContainer,
@@ -305,11 +344,6 @@ export class Sidebar {
       button.classList.toggle('is-active', active);
       button.setAttribute('aria-pressed', String(active));
     }
-    this.customSwatchButton.classList.toggle('is-active', currentIsCustom);
-    this.customSwatchButton.setAttribute('aria-pressed', String(currentIsCustom));
-    const swatchColors = this.callbacks.colorsFor(currentIsCustom ? current : encodeCustomPalette(this.customFromHex, this.customToRow.hidden ? undefined : this.customToHex));
-    this.customSwatchButton.style.setProperty('--swatch-fill', swatchColors.fill);
-    this.customSwatchButton.style.setProperty('--swatch-track', swatchColors.track);
 
     // A saved preset can carry a custom colour of its own; reflect it in the
     // panel's inputs so re-opening the picker shows what is actually applied,
@@ -329,11 +363,23 @@ export class Sidebar {
           this.customToHexInput.value = decoded.to;
         }
         this.customToRow.hidden = !decoded.to;
+        this.customPresetsRow.hidden = !decoded.to;
         this.syncCustomModeButtons();
       }
     }
 
+    // The trigger's own swatch previews the raw hex(es) currently dialled in
+    // — not the contrast-corrected `fill` colorsFor would return — since this
+    // is direct feedback on what was typed, the same way the native <input
+    // type=color> swatch beside each hex field is.
+    this.customTriggerSwatch.style.background =
+      this.customMode === 'gradient'
+        ? `linear-gradient(135deg, ${this.customFromHex}, ${this.customToHex})`
+        : this.customFromHex;
+
     const shouldShowPanel = this.customPanelOpen || currentIsCustom;
+    this.customSwatchButton.classList.toggle('is-active', shouldShowPanel);
+    this.customSwatchButton.setAttribute('aria-expanded', String(shouldShowPanel));
     if (this.customPanel.hidden === shouldShowPanel) this.customPanel.hidden = !shouldShowPanel;
   }
 
@@ -347,13 +393,13 @@ export class Sidebar {
 
   private buildCustomColorPanel(): HTMLElement {
     this.customPanel = document.createElement('div');
-    this.customPanel.className = 'custom-colour-panel';
+    this.customPanel.className = 'custom-color-panel';
     this.customPanel.hidden = true;
 
     const modeRow = document.createElement('div');
     modeRow.className = 'chip-row';
     modeRow.setAttribute('role', 'group');
-    modeRow.setAttribute('aria-label', 'Custom colour style');
+    modeRow.setAttribute('aria-label', 'Custom color style');
     for (const mode of ['solid', 'gradient'] as const) {
       const button = document.createElement('button');
       button.type = 'button';
@@ -362,6 +408,7 @@ export class Sidebar {
       button.addEventListener('click', () => {
         this.customMode = mode;
         this.customToRow.hidden = mode !== 'gradient';
+        this.customPresetsRow.hidden = mode !== 'gradient';
         this.syncCustomModeButtons();
         this.applyCustomColor();
       });
@@ -396,7 +443,31 @@ export class Sidebar {
     );
     this.customToRow.hidden = this.customMode !== 'gradient';
 
-    this.customPanel.append(modeRow, fromRow, this.customToRow);
+    this.customPresetsRow = document.createElement('div');
+    this.customPresetsRow.className = 'custom-color-presets';
+    this.customPresetsRow.setAttribute('role', 'group');
+    this.customPresetsRow.setAttribute('aria-label', 'Gradient presets');
+    this.customPresetsRow.hidden = this.customMode !== 'gradient';
+    for (const preset of GRADIENT_PRESETS) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'custom-color-preset';
+      button.setAttribute('aria-label', preset.label);
+      button.title = preset.label;
+      button.style.background = `linear-gradient(135deg, ${preset.from}, ${preset.to})`;
+      button.addEventListener('click', () => {
+        this.customFromHex = preset.from;
+        this.customToHex = preset.to;
+        this.customFromInput.value = preset.from;
+        this.customFromHexInput.value = preset.from;
+        this.customToInput.value = preset.to;
+        this.customToHexInput.value = preset.to;
+        this.applyCustomColor();
+      });
+      this.customPresetsRow.append(button);
+    }
+
+    this.customPanel.append(modeRow, fromRow, this.customToRow, this.customPresetsRow);
     this.syncCustomModeButtons();
     return this.customPanel;
   }
@@ -408,27 +479,27 @@ export class Sidebar {
     onChange: (hex: string) => void,
   ): HTMLElement {
     const row = document.createElement('div');
-    row.className = 'settings-row custom-colour-row';
+    row.className = 'settings-row custom-color-row';
 
     const text = document.createElement('span');
     text.className = 'settings-label';
     text.textContent = label;
 
     const controls = document.createElement('div');
-    controls.className = 'custom-colour-controls';
+    controls.className = 'custom-color-controls';
 
     const colorInput = document.createElement('input');
     colorInput.type = 'color';
-    colorInput.className = 'colour-input';
+    colorInput.className = 'color-input';
     colorInput.value = initialHex;
-    colorInput.setAttribute('aria-label', `${label} colour`);
+    colorInput.setAttribute('aria-label', `${label} color`);
 
     const hexInput = document.createElement('input');
     hexInput.type = 'text';
     hexInput.className = 'text-input hex-input';
     hexInput.value = initialHex;
     hexInput.maxLength = 7;
-    hexInput.setAttribute('aria-label', `${label} colour, hex code`);
+    hexInput.setAttribute('aria-label', `${label} color, hex code`);
     hexInput.autocomplete = 'off';
     hexInput.spellcheck = false;
 
@@ -836,8 +907,15 @@ function choiceRow<T extends string>(
   get: () => T,
   set: (value: T) => void,
 ): HTMLElement {
+  // Stacked, not label-left/control-right: a 2-3 choice icon group next to a
+  // label sometimes fits on one line (right-aligned by the row's own
+  // space-between) and sometimes doesn't (wraps below, left-aligned) — which
+  // one depends on the label's own length and the current chip count, so
+  // rows ended up inconsistently aligned with no visual logic tying them
+  // together. Giving the group its own full-width row below the label always
+  // fits, so it stays put and left-aligned regardless of chip count.
   const row = document.createElement('div');
-  row.className = 'settings-row';
+  row.className = 'settings-row settings-row-stacked';
 
   const text = document.createElement('span');
   text.className = 'settings-label';

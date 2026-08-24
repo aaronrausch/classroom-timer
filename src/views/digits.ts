@@ -1,6 +1,12 @@
 import { activeFill, activeNumeral, formatClock, setAttrs, svg } from './types';
 import type { RenderState, Visualization } from './types';
 
+/** Exposed for the same reason `CircleVisualization.setTicks` is: a setting
+ * flip should update in place, not recreate the SVG (see `setShowTenths`). */
+export interface DigitsVisualization extends Visualization {
+  setShowTenths(value: boolean): void;
+}
+
 /**
  * The full-screen numeric countdown (SPEC §5.3D).
  *
@@ -45,7 +51,8 @@ function viewBoxFor(cellCount: number): string {
   return `0 ${BOX_TOP} ${cellCount * CELL} ${BOX_HEIGHT}`;
 }
 
-export function createDigits(root: HTMLElement, showTenths = false): Visualization {
+export function createDigits(root: HTMLElement, initialShowTenths = false): DigitsVisualization {
+  let showTenths = initialShowTenths;
   const wrapper = document.createElement('div');
   wrapper.className = 'viz viz-digits';
   wrapper.setAttribute('aria-hidden', 'true');
@@ -100,6 +107,9 @@ export function createDigits(root: HTMLElement, showTenths = false): Visualizati
     // A numeric overlay on top of numerals would be redundant; the toggle is
     // hidden for this mode rather than silently ignored (SPEC §5.4).
     supportsReadout: false,
+    setShowTenths(value: boolean) {
+      showTenths = value;
+    },
     render(state: RenderState) {
       // Under a minute, seconds only, at greater size still. The step up in
       // size lands on the same moment as the warning cross-fade, and a decisive

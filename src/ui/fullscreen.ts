@@ -7,14 +7,14 @@
  * - One press to full-screen, and a graceful fallback when the Fullscreen API
  *   is blocked — which it is, routinely, in the embedded browsers on
  *   interactive whiteboards.
- * - Chrome that gets out of the way after three seconds of stillness while a
+ * - Chrome that gets out of the way after a moment of stillness while a
  *   timer runs, leaving the visualization and nothing else, and comes straight
  *   back on any movement or key press.
  * - A wake lock, so a forty-minute silent reading timer is not interrupted by
  *   the classroom PC deciding it is bored.
  */
 
-const IDLE_MS = 3000;
+const IDLE_MS = 1500;
 
 type FullscreenCapableElement = HTMLElement & {
   webkitRequestFullscreen?: () => Promise<void> | void;
