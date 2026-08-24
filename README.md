@@ -4,8 +4,7 @@ A full-screen visual countdown timer for a classroom projector or interactive
 whiteboard. No accounts, no network calls, no student data — it works offline
 and stores nothing but the timers you save, in your own browser.
 
-**[Live demo →](#)** _(update this link after your first deploy — see
-[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md))_
+**[Live demo →](https://aaronrausch.github.io/classroom-timer/)**
 
 ![Classroom Timer showing a circle countdown](docs/screenshot.png)
 _(add a screenshot here once you have one — see the note in
