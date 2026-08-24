@@ -25,9 +25,11 @@ export class Stage {
 
   private readonly vizHost: HTMLElement;
   private readonly readout: Readout;
+  private readonly nameLabel: HTMLElement;
   private readonly pausedIndicator: HTMLElement;
   private readonly finished: HTMLButtonElement;
   private readonly live: HTMLElement;
+  private lastLabelText = '';
 
   private visualization: Visualization | null = null;
   private visualizationId: VisualizationId | null = null;
@@ -45,6 +47,17 @@ export class Stage {
     this.vizHost.className = 'stage-viz';
 
     this.readout = new Readout(this.vizHost);
+
+    // Optional, off by default (SPEC §1.2 — text is justified here because a
+    // teacher running back-to-back activities on one screen, or a student
+    // walking in mid-lesson, may genuinely need to know *which* timer this
+    // is, and the preset name is the only thing that says so). Deliberately
+    // outside `vizHost` and never touched by the projector chrome fade below
+    // — unlike the controls, this is not something to get out of the way of
+    // the visualization; it is a small, permanent part of it.
+    this.nameLabel = document.createElement('p');
+    this.nameLabel.className = 'stage-name';
+    this.nameLabel.hidden = true;
 
     // Persistent and unambiguous: a teacher who walked away must be able to
     // tell at a glance that time is not moving (SPEC §5.1).
@@ -72,7 +85,7 @@ export class Stage {
     this.live.setAttribute('role', 'status');
     this.live.setAttribute('aria-live', 'polite');
 
-    this.element.append(this.vizHost, this.pausedIndicator, this.finished, this.live);
+    this.element.append(this.vizHost, this.nameLabel, this.pausedIndicator, this.finished, this.live);
   }
 
   setDismissHandler(handler: () => void): void {
@@ -132,6 +145,12 @@ export class Stage {
   }
 
   render(state: RenderState): void {
+    if (this.nameLabel.hidden === state.showName) this.nameLabel.hidden = !state.showName;
+    if (state.showName && state.name !== this.lastLabelText) {
+      this.lastLabelText = state.name;
+      this.nameLabel.textContent = state.name;
+    }
+
     this.visualization?.render(state);
     const showReadout = state.readout && this.supportsReadout;
     this.readout.render(state, showReadout);

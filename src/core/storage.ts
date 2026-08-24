@@ -274,6 +274,8 @@ function sanitizeSettings(raw: unknown): Settings {
         ? raw['circleTicks']
         : DEFAULT_SETTINGS.circleTicks,
     showTenths: typeof raw['showTenths'] === 'boolean' ? raw['showTenths'] : DEFAULT_SETTINGS.showTenths,
+    showTimerName:
+      typeof raw['showTimerName'] === 'boolean' ? raw['showTimerName'] : DEFAULT_SETTINGS.showTimerName,
     sidebarCollapsed:
       typeof raw['sidebarCollapsed'] === 'boolean'
         ? raw['sidebarCollapsed']

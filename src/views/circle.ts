@@ -1,4 +1,12 @@
-import { depletionFraction, activeFill, activeNumeral, setAttrs, svg } from './types';
+import {
+  depletionFraction,
+  activeFill,
+  activeNumeral,
+  gradientStops,
+  nextGradientId,
+  setAttrs,
+  svg,
+} from './types';
 import type { RenderState, Visualization } from './types';
 
 export type CircleStyle = 'ring' | 'disc';
@@ -170,7 +178,26 @@ export function createCircle(
     transform: 'rotate(90 50 50) matrix(-1 0 0 1 100 0)',
   });
 
-  svgEl.append(track, ticks, remaining);
+  // One gradient, spanning the full 100x100 viewBox corner-to-corner, so the
+  // depleting arc reads as a single fixed sweep across the whole face rather
+  // than each drawn segment picking its own colour (per the gradient design:
+  // "maps onto the whole view of the timer, not individual elements").
+  const gradientId = nextGradientId('circle');
+  const gradientFrom = svg('stop', { offset: '0%' });
+  const gradientTo = svg('stop', { offset: '100%' });
+  const gradientEl = svg('linearGradient', {
+    id: gradientId,
+    gradientUnits: 'userSpaceOnUse',
+    x1: 0,
+    y1: 0,
+    x2: 100,
+    y2: 100,
+  });
+  gradientEl.append(gradientFrom, gradientTo);
+  const defs = svg('defs', {});
+  defs.append(gradientEl);
+
+  svgEl.append(defs, track, ticks, remaining);
   root.append(svgEl);
 
   let lastFill = '';
@@ -195,7 +222,12 @@ export function createCircle(
       // dashoffset C*(1-f) leaves exactly C*f drawn: exact at 1, exact at 0.
       setAttrs(remaining, { 'stroke-dashoffset': circumference * (1 - fraction) });
 
-      const fill = activeFill(state);
+      const stops = gradientStops(state);
+      const fill = stops ? `url(#${gradientId})` : activeFill(state);
+      if (stops) {
+        setAttrs(gradientFrom, { 'stop-color': stops.from });
+        setAttrs(gradientTo, { 'stop-color': stops.to });
+      }
       if (fill !== lastFill) {
         remaining.setAttribute('stroke', fill);
         lastFill = fill;

@@ -1,4 +1,11 @@
-import { activeFill, activeNumeral, setAttrs, svg } from './types';
+import {
+  activeFill,
+  activeNumeral,
+  gradientStops,
+  nextGradientId,
+  setAttrs,
+  svg,
+} from './types';
 import type { RenderState, Visualization } from './types';
 
 /**
@@ -102,6 +109,28 @@ export function createDots(root: HTMLElement): Visualization {
     'aria-hidden': 'true',
     focusable: 'false',
   });
+  // One gradient shared by every lit dot, spanning the grid's own viewBox
+  // corner-to-corner — each dot's fill just references it and samples its own
+  // position, rather than each dot computing an independent colour (per the
+  // gradient design: "maps onto the whole view of the timer, not individual
+  // elements"). Its coordinates are re-anchored in `build()` whenever the grid
+  // is reshaped, since the viewBox itself changes with the dot count.
+  const gradientId = nextGradientId('dots');
+  const gradientFrom = svg('stop', { offset: '0%' });
+  const gradientTo = svg('stop', { offset: '100%' });
+  const gradientEl = svg('linearGradient', {
+    id: gradientId,
+    gradientUnits: 'userSpaceOnUse',
+    x1: 0,
+    y1: 0,
+    x2: 10,
+    y2: 10,
+  });
+  gradientEl.append(gradientFrom, gradientTo);
+  const defs = svg('defs', {});
+  defs.append(gradientEl);
+  svgEl.append(defs);
+
   root.append(svgEl);
 
   interface Cell {
@@ -144,12 +173,15 @@ export function createDots(root: HTMLElement): Visualization {
     builtCount = count;
     builtCols = cols;
 
-    while (svgEl.firstChild) svgEl.removeChild(svgEl.firstChild);
+    // `defs` (holding the shared gradient) is excluded from the wipe — it is
+    // not a dot and must survive a reshape, just re-anchored to the new span.
+    while (svgEl.lastChild && svgEl.lastChild !== defs) svgEl.removeChild(svgEl.lastChild);
     cells = [];
 
     const cell = 10;
     const r = cell * 0.4;
     svgEl.setAttribute('viewBox', `0 0 ${cols * cell} ${rows * cell}`);
+    setAttrs(gradientEl, { x2: cols * cell, y2: rows * cell });
 
     // The grid is always the full cols×rows rectangle. Positions at or beyond
     // `count` are padding: real screen position, never a real countdown unit.
@@ -181,8 +213,7 @@ export function createDots(root: HTMLElement): Visualization {
     }
   }
 
-  let lastFill = '';
-  let lastTrack = '';
+  let lastNumeral = '';
 
   return {
     id: 'dots',
@@ -198,11 +229,13 @@ export function createDots(root: HTMLElement): Visualization {
       const firstLit = plan.count - litCount;
       const partial = litCount > 0 ? remainingDots - (litCount - 1) : 0;
 
-      const fill = activeFill(state);
+      const stops = gradientStops(state);
+      const fill = stops ? `url(#${gradientId})` : activeFill(state);
+      if (stops) {
+        setAttrs(gradientFrom, { 'stop-color': stops.from });
+        setAttrs(gradientTo, { 'stop-color': stops.to });
+      }
       const track = state.colors.track;
-      const changedColours = fill !== lastFill || track !== lastTrack;
-      lastFill = fill;
-      lastTrack = track;
 
       // The non-colour channel for the warning state: the dots swell slightly.
       const grow = 1 + 0.08 * state.warningMix;
@@ -250,7 +283,15 @@ export function createDots(root: HTMLElement): Visualization {
         }
       }
 
-      if (changedColours) svgEl.style.color = activeNumeral(state);
+      // Tracked separately from `changedColours`: in gradient mode `fill` stays
+      // a stable `url(#id)` through a warning cross-fade (only the referenced
+      // stops move), so gating this on the same flag would freeze the numeral
+      // mid-fade instead of following `warningMix` like every other view.
+      const numeral = activeNumeral(state);
+      if (numeral !== lastNumeral) {
+        svgEl.style.color = numeral;
+        lastNumeral = numeral;
+      }
     },
     destroy() {
       observer?.disconnect();

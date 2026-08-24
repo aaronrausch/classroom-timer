@@ -44,6 +44,7 @@ function sampleData(): AppData {
       circleStyle: 'disc',
       circleTicks: 'clock',
       showTenths: true,
+      showTimerName: true,
       sidebarCollapsed: false,
     },
     presets: starterPresets(),

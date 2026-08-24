@@ -37,7 +37,10 @@ function defaultConfig(): WorkingConfig {
     visualization: 'circle',
     palette: 'teal',
     readout: true,
-    warning: { type: 'seconds', value: 60 },
+    // The last 10% scales with the timer instead of being a flat 60s, which
+    // reads oddly on a 20-second exit ticket and barely registers on a
+    // 40-minute one.
+    warning: { type: 'percent', value: 10 },
   };
 }
 
@@ -363,6 +366,8 @@ function boot(): void {
       phase: snapshot.phase,
       colors: theme.colorsFor(config.palette),
       readout: config.readout,
+      name: config.name,
+      showName: data.settings.showTimerName,
       reducedMotion,
       warningMix,
     };

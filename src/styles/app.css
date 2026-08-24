@@ -144,6 +144,24 @@ body {
   min-width: 0;
 }
 
+/* Small and out of the way — identifies which timer this is without
+   competing with the visualization itself (SPEC §1.2's icons-not-words
+   principle bends here on purpose; see the comment in stage.ts). */
+.stage-name {
+  position: absolute;
+  left: clamp(0.75rem, 2vw, 1.5rem);
+  bottom: clamp(0.5rem, 1.5vh, 1.25rem);
+  margin: 0;
+  max-width: min(60vw, 32ch);
+  overflow: hidden;
+  color: var(--surface-muted);
+  font-size: clamp(0.8rem, 1.6vmin, 1.05rem);
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
 .stage-viz {
   position: relative;
   display: grid;
@@ -204,6 +222,35 @@ body {
 .viz-dots {
   width: 100%;
   height: 100%;
+}
+
+/*
+ * With the readout showing, dots mode lays out as an actual flex column
+ * instead of the shared grid + absolutely-positioned overlay every other
+ * mode uses. The grid and the readout used to share space via a fixed
+ * `calc(100% - 8vh)` reservation that had no relationship to the readout's
+ * real font size — bump the font size (as happened) and the two overlap,
+ * because the reservation doesn't know the readout grew. Flexbox with the
+ * readout as a genuine sibling means it reserves exactly the space its own
+ * rendered content needs, so this cannot drift out of sync again.
+ */
+.stage-viz[data-viz='dots'][data-readout='on'] {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5vh;
+}
+
+.stage-viz[data-viz='dots'][data-readout='on'] .viz-dots {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  height: auto;
+}
+
+.stage-viz[data-viz='dots'][data-readout='on'] .readout {
+  position: static;
+  flex: none;
+  transform: none;
 }
 
 /* Digits ------------------------------------------------------------------ */
@@ -290,10 +337,6 @@ body {
   left: 50%;
   transform: translateX(-50%);
   font-size: clamp(1.6rem, 9vmin, 7.5rem);
-}
-
-.stage-viz[data-viz='dots'][data-readout='on'] .viz-dots {
-  height: calc(100% - 8vh);
 }
 
 /* Paused ------------------------------------------------------------------ */
@@ -525,6 +568,7 @@ body {
   overflow: hidden;
   background: var(--surface-panel);
   border-left: 1px solid var(--surface-border);
+  transition: opacity var(--transition);
 }
 
 .sidebar-header {
@@ -533,6 +577,7 @@ body {
   justify-content: space-between;
   gap: var(--gap);
   padding: 1rem 0.75rem 0.75rem 1.1rem;
+  min-width: 0;
 }
 
 .sidebar-title {
@@ -555,6 +600,14 @@ body {
  */
 .sidebar-body-cell {
   position: relative;
+  /* Both axes: a grid item's default min-size is its content's min-content
+     size, not 0 — the same gotcha `.sidebar`/`.layout-main` needed min-width:0
+     for, one level deeper. Without it, collapsing the sidebar to a 0-width
+     column doesn't actually shrink this cell below its content's natural
+     width, and the absolutely-positioned `.sidebar-body` inside — sized from
+     this cell, not the collapsed outer column — renders at that full width,
+     visibly overlapping the stage. */
+  min-width: 0;
   min-height: 0;
 }
 
@@ -836,6 +889,24 @@ body {
   gap: 0.4rem;
 }
 
+/*
+ * The colour picker specifically: with 15 curated palettes plus the custom
+ * swatch, this wraps to several rows where the other chip-rows (theme,
+ * circle style, chime) stay to one or two. Five per row is the better fit
+ * for the sidebar's own width than three — three-per-row would leave each
+ * swatch conspicuously wide for no reason — so this pins that explicitly
+ * rather than leaving it to however many chips happen to fit, and gives
+ * row-to-row spacing a little more room than chip-to-chip spacing so the
+ * grid reads as organised rows, not a loose wrapped paragraph.
+ */
+.chip-row-colours {
+  gap: 0.55rem 0.4rem;
+}
+
+.chip-row-colours .chip-swatch {
+  flex: 0 0 calc((100% - 4 * 0.4rem) / 5);
+}
+
 .chip {
   display: inline-grid;
   place-items: center;
@@ -870,6 +941,73 @@ body {
 .chip.chip-swatch.is-active {
   outline: 3px solid var(--surface-text);
   outline-offset: 2px;
+}
+
+/*
+ * The custom trigger reuses the same fill/track gradient background as a
+ * live preview of whatever hex(es) are currently set — see syncPaletteButtons
+ * in sidebar.ts — so its own icon needs to read against *any* colour pair,
+ * not one known in advance. `difference` blending guarantees that: it can't
+ * disappear into the background the way a fixed icon colour eventually would.
+ */
+.chip-swatch-custom {
+  border-style: dashed;
+}
+
+.chip-swatch-custom svg {
+  color: #fff;
+  mix-blend-mode: difference;
+}
+
+.custom-colour-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.2rem 0 0.6rem;
+}
+
+.custom-colour-row {
+  padding: 0.3rem 0;
+  border-bottom: none;
+}
+
+.custom-colour-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.colour-input {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 2.4rem;
+  height: 2.4rem;
+  flex: none;
+  padding: 0;
+  border: 2px solid var(--surface-border);
+  border-radius: var(--radius);
+  background: none;
+  cursor: pointer;
+}
+
+.colour-input::-webkit-color-swatch-wrapper {
+  padding: 2px;
+}
+
+.colour-input::-webkit-color-swatch {
+  border: none;
+  border-radius: calc(var(--radius) - 2px);
+}
+
+.colour-input::-moz-color-swatch {
+  border: none;
+  border-radius: calc(var(--radius) - 2px);
+}
+
+.hex-input {
+  flex: 0 1 8rem;
+  font-family: ui-monospace, 'SF Mono', 'Cascadia Code', Consolas, monospace;
+  text-transform: lowercase;
 }
 
 .settings-notice,
@@ -935,14 +1073,22 @@ kbd {
   padding: 0 0 var(--gap);
 }
 
-/* After three seconds of stillness, what remains is the visualization and
-   nothing else. Any movement or key press brings it straight back. */
-:root[data-projector='true'][data-chrome='hidden'] .controls {
+/*
+ * After a few seconds of stillness while a timer is running, everything
+ * except the visualization itself (and the optional name label) fades away —
+ * the toolbar and the sidebar both. Any pointer movement or key press brings
+ * it straight back (SPEC §5.11's chrome auto-hide, extended to the sidebar
+ * and to normal windowed mode, not just full screen: a teacher glancing at a
+ * timer in a regular browser window benefits from the same calm just as much
+ * as one in full screen does).
+ */
+:root[data-chrome='hidden'] .controls,
+:root[data-chrome='hidden'] .sidebar {
   opacity: 0;
   pointer-events: none;
 }
 
-:root[data-projector='true'][data-chrome='hidden'] {
+:root[data-chrome='hidden'] {
   cursor: none;
 }
 

@@ -18,6 +18,10 @@ export interface RenderState {
   colors: PaletteColors;
   /** Overlay readout requested. Ignored by views that do not support it. */
   readout: boolean;
+  /** The current preset/timer's own name, for the optional corner label (SPEC-adjacent; see Stage). */
+  name: string;
+  /** Whether that corner label should be shown at all. */
+  showName: boolean;
   reducedMotion: boolean;
   /**
    * How far into the warning appearance the display is, 0..1. The app ramps
@@ -87,6 +91,29 @@ function hexChannels(hex: string): [number, number, number] {
 /** The colour the depleting quantity is drawn in, mid-cross-fade. */
 export function activeFill(state: RenderState): string {
   return mixHex(state.colors.fill, state.colors.warning, state.warningMix);
+}
+
+/**
+ * The two stop colours for a gradient palette, mid-cross-fade — each stop
+ * blends toward the *same* solid warning colour independently, so the warning
+ * state still reads as "the whole sweep is now alarmed", not a jump to flat
+ * colour. `null` for a non-gradient palette, so callers can `if` on it once.
+ */
+export function gradientStops(state: RenderState): { from: string; to: string } | null {
+  const gradient = state.colors.gradient;
+  if (!gradient) return null;
+  return {
+    from: mixHex(gradient.from, state.colors.warning, state.warningMix),
+    to: mixHex(gradient.to, state.colors.warning, state.warningMix),
+  };
+}
+
+let gradientIdCounter = 0;
+
+/** A DOM-unique id for a view's own `<linearGradient>` def. */
+export function nextGradientId(prefix: string): string {
+  gradientIdCounter += 1;
+  return `${prefix}-gradient-${gradientIdCounter}`;
 }
 
 /** The colour numerals are drawn in, held to the stricter text contrast ratio. */

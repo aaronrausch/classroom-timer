@@ -53,6 +53,8 @@ export interface Settings {
   circleTicks: 'none' | 'clock' | 'interval';
   /** Tenths of a second under ten seconds in the digits mode. Off by default. */
   showTenths: boolean;
+  /** A small, persistent label in the corner of the stage naming the running timer. Off by default. */
+  showTimerName: boolean;
   /**
    * Whether the sidebar (saved timers plus settings) is folded away. A teacher
    * who runs the same two timers all day wants the wall, not the panel; a
@@ -76,6 +78,7 @@ export const DEFAULT_SETTINGS: Settings = {
   circleStyle: 'ring',
   circleTicks: 'none',
   showTenths: false,
+  showTimerName: false,
   sidebarCollapsed: false,
 };
 

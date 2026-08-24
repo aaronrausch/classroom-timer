@@ -1,5 +1,5 @@
 import type { ThemeChoice } from '../core/presets';
-import { PALETTES, SURFACES, resolvePalette } from './palettes';
+import { PALETTES, SURFACES, resolvePaletteOrCustom } from './palettes';
 import type { PaletteColors, ThemeMode } from './palettes';
 
 /**
@@ -74,7 +74,7 @@ export class ThemeController {
   }
 
   colorsFor(paletteId: string): PaletteColors {
-    return resolvePalette(paletteId, this.mode);
+    return resolvePaletteOrCustom(paletteId, this.mode);
   }
 }
 

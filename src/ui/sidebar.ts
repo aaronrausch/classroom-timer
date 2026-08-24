@@ -3,6 +3,11 @@ import type { AppData, Settings, ThemeChoice } from '../core/presets';
 import { SCHEMA_VERSION, sanitizeAppData, serializeAppData } from '../core/storage';
 import type { WarningThreshold } from '../core/timer';
 import { icon, iconButton } from './icons';
+import {
+  decodeCustomPalette,
+  encodeCustomPalette,
+  isCustomPaletteId,
+} from './palettes';
 import type { PaletteColors } from './palettes';
 import type { PresetList } from './presetList';
 import { paletteOptions } from './theme';
@@ -94,6 +99,19 @@ export class Sidebar {
   private warningSelect!: HTMLSelectElement;
   private actionsContainer!: HTMLElement;
 
+  private customSwatchButton!: HTMLButtonElement;
+  private customPanel!: HTMLElement;
+  private customPanelOpen = false;
+  private customMode: 'solid' | 'gradient' = 'solid';
+  private customModeButtons = new Map<'solid' | 'gradient', HTMLButtonElement>();
+  private customFromHex = '#3366cc';
+  private customToHex = '#cc3366';
+  private customFromInput!: HTMLInputElement;
+  private customFromHexInput!: HTMLInputElement;
+  private customToInput!: HTMLInputElement;
+  private customToHexInput!: HTMLInputElement;
+  private customToRow!: HTMLElement;
+
   constructor(
     private readonly presetList: PresetList,
     private readonly callbacks: SidebarCallbacks,
@@ -139,8 +157,8 @@ export class Sidebar {
       'This timer sends nothing anywhere. No accounts, no analytics, no network. Your timers are stored only in this browser.';
 
     this.body.append(
-      this.buildCurrentTimerSection(),
       presetsSection,
+      this.buildCurrentTimerSection(),
       this.buildAppearanceSection(),
       this.buildSoundSection(),
       this.buildDisplaySection(),
@@ -193,7 +211,7 @@ export class Sidebar {
 
     const paletteField = labelledField('Colour', () => {
       const group = document.createElement('div');
-      group.className = 'chip-row';
+      group.className = 'chip-row chip-row-colours';
       for (const option of paletteOptions()) {
         const button = document.createElement('button');
         button.type = 'button';
@@ -205,11 +223,28 @@ export class Sidebar {
         button.style.setProperty('--swatch-track', colors.track);
         button.addEventListener('click', () => {
           this.callbacks.onCurrentTimerChange({ palette: option.id });
+          this.customPanelOpen = false;
           this.syncPaletteButtons();
         });
         this.paletteButtons.set(option.id, button);
         group.append(button);
       }
+
+      this.customSwatchButton = document.createElement('button');
+      this.customSwatchButton.type = 'button';
+      this.customSwatchButton.className = 'chip chip-swatch chip-swatch-custom';
+      this.customSwatchButton.setAttribute('aria-label', 'Custom colour');
+      this.customSwatchButton.title = 'Custom colour';
+      this.customSwatchButton.append(icon('plus', 16));
+      this.customSwatchButton.addEventListener('click', () => {
+        this.customPanelOpen = true;
+        // Opening it is also choosing it — a picker you have to open but that
+        // does not yet apply anything would show a colour on the stage that
+        // does not match the panel, right when the panel first appears.
+        this.applyCustomColor();
+        this.syncPaletteButtons();
+      });
+      group.append(this.customSwatchButton);
       return group;
     });
 
@@ -232,7 +267,14 @@ export class Sidebar {
     this.actionsContainer = document.createElement('div');
     this.actionsContainer.className = 'current-timer-actions';
 
-    section.append(heading, nameField, paletteField, warningField, this.actionsContainer);
+    section.append(
+      heading,
+      nameField,
+      paletteField,
+      this.buildCustomColorPanel(),
+      warningField,
+      this.actionsContainer,
+    );
     return section;
   }
 
@@ -257,11 +299,169 @@ export class Sidebar {
 
   private syncPaletteButtons(): void {
     const current = this.callbacks.getCurrentTimer().palette;
+    const currentIsCustom = isCustomPaletteId(current);
     for (const [id, button] of this.paletteButtons) {
       const active = id === current;
       button.classList.toggle('is-active', active);
       button.setAttribute('aria-pressed', String(active));
     }
+    this.customSwatchButton.classList.toggle('is-active', currentIsCustom);
+    this.customSwatchButton.setAttribute('aria-pressed', String(currentIsCustom));
+    const swatchColors = this.callbacks.colorsFor(currentIsCustom ? current : encodeCustomPalette(this.customFromHex, this.customToRow.hidden ? undefined : this.customToHex));
+    this.customSwatchButton.style.setProperty('--swatch-fill', swatchColors.fill);
+    this.customSwatchButton.style.setProperty('--swatch-track', swatchColors.track);
+
+    // A saved preset can carry a custom colour of its own; reflect it in the
+    // panel's inputs so re-opening the picker shows what is actually applied,
+    // not whatever the last teacher happened to type.
+    if (currentIsCustom) {
+      const decoded = decodeCustomPalette(current);
+      if (decoded) {
+        this.customMode = decoded.to ? 'gradient' : 'solid';
+        this.customFromHex = decoded.from;
+        if (decoded.to) this.customToHex = decoded.to;
+        if (document.activeElement !== this.customFromHexInput) {
+          this.customFromInput.value = decoded.from;
+          this.customFromHexInput.value = decoded.from;
+        }
+        if (decoded.to && document.activeElement !== this.customToHexInput) {
+          this.customToInput.value = decoded.to;
+          this.customToHexInput.value = decoded.to;
+        }
+        this.customToRow.hidden = !decoded.to;
+        this.syncCustomModeButtons();
+      }
+    }
+
+    const shouldShowPanel = this.customPanelOpen || currentIsCustom;
+    if (this.customPanel.hidden === shouldShowPanel) this.customPanel.hidden = !shouldShowPanel;
+  }
+
+  private syncCustomModeButtons(): void {
+    for (const [mode, button] of this.customModeButtons) {
+      const active = mode === this.customMode;
+      button.classList.toggle('is-active', active);
+      button.setAttribute('aria-pressed', String(active));
+    }
+  }
+
+  private buildCustomColorPanel(): HTMLElement {
+    this.customPanel = document.createElement('div');
+    this.customPanel.className = 'custom-colour-panel';
+    this.customPanel.hidden = true;
+
+    const modeRow = document.createElement('div');
+    modeRow.className = 'chip-row';
+    modeRow.setAttribute('role', 'group');
+    modeRow.setAttribute('aria-label', 'Custom colour style');
+    for (const mode of ['solid', 'gradient'] as const) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'chip chip-wide';
+      button.textContent = mode === 'solid' ? 'Solid' : 'Gradient';
+      button.addEventListener('click', () => {
+        this.customMode = mode;
+        this.customToRow.hidden = mode !== 'gradient';
+        this.syncCustomModeButtons();
+        this.applyCustomColor();
+      });
+      this.customModeButtons.set(mode, button);
+      modeRow.append(button);
+    }
+
+    const fromRow = this.buildCustomColorRow(
+      'From',
+      this.customFromHex,
+      (input, hexInput) => {
+        this.customFromInput = input;
+        this.customFromHexInput = hexInput;
+      },
+      (hex) => {
+        this.customFromHex = hex;
+        this.applyCustomColor();
+      },
+    );
+
+    this.customToRow = this.buildCustomColorRow(
+      'To',
+      this.customToHex,
+      (input, hexInput) => {
+        this.customToInput = input;
+        this.customToHexInput = hexInput;
+      },
+      (hex) => {
+        this.customToHex = hex;
+        this.applyCustomColor();
+      },
+    );
+    this.customToRow.hidden = this.customMode !== 'gradient';
+
+    this.customPanel.append(modeRow, fromRow, this.customToRow);
+    this.syncCustomModeButtons();
+    return this.customPanel;
+  }
+
+  private buildCustomColorRow(
+    label: string,
+    initialHex: string,
+    capture: (colorInput: HTMLInputElement, hexInput: HTMLInputElement) => void,
+    onChange: (hex: string) => void,
+  ): HTMLElement {
+    const row = document.createElement('div');
+    row.className = 'settings-row custom-colour-row';
+
+    const text = document.createElement('span');
+    text.className = 'settings-label';
+    text.textContent = label;
+
+    const controls = document.createElement('div');
+    controls.className = 'custom-colour-controls';
+
+    const colorInput = document.createElement('input');
+    colorInput.type = 'color';
+    colorInput.className = 'colour-input';
+    colorInput.value = initialHex;
+    colorInput.setAttribute('aria-label', `${label} colour`);
+
+    const hexInput = document.createElement('input');
+    hexInput.type = 'text';
+    hexInput.className = 'text-input hex-input';
+    hexInput.value = initialHex;
+    hexInput.maxLength = 7;
+    hexInput.setAttribute('aria-label', `${label} colour, hex code`);
+    hexInput.autocomplete = 'off';
+    hexInput.spellcheck = false;
+
+    const commit = (raw: string) => {
+      const normalized = normalizeHexInput(raw);
+      if (!normalized) return; // Not a readable hex yet — leave the field alone rather than reject a half-typed value.
+      colorInput.value = normalized;
+      hexInput.value = normalized;
+      onChange(normalized);
+    };
+
+    colorInput.addEventListener('input', () => commit(colorInput.value));
+    hexInput.addEventListener('change', () => commit(hexInput.value));
+    hexInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        hexInput.blur();
+      }
+    });
+
+    controls.append(colorInput, hexInput);
+    row.append(text, controls);
+    capture(colorInput, hexInput);
+    return row;
+  }
+
+  private applyCustomColor(): void {
+    const id =
+      this.customMode === 'gradient'
+        ? encodeCustomPalette(this.customFromHex, this.customToHex)
+        : encodeCustomPalette(this.customFromHex);
+    this.callbacks.onCurrentTimerChange({ palette: id });
+    this.syncPaletteButtons();
   }
 
   private renderActions(): void {
@@ -381,6 +581,24 @@ export class Sidebar {
         (value) => this.patch({ circleTicks: value }),
       ),
     );
+
+    const nameRow = document.createElement('div');
+    nameRow.className = 'settings-row';
+    const nameLabel = document.createElement('span');
+    nameLabel.className = 'settings-label';
+    nameLabel.textContent = 'Show timer name';
+    nameRow.append(
+      nameLabel,
+      toggleButton(
+        this.callbacks.getData().settings.showTimerName,
+        'check',
+        'close',
+        'Name shown',
+        'Name hidden',
+        (next) => this.patch({ showTimerName: next }),
+      ),
+    );
+    section.append(nameRow);
 
     return section;
   }
@@ -582,7 +800,18 @@ function warningOptionIndex(warning: WarningThreshold): number {
   const index = WARNING_OPTIONS.findIndex(
     (option) => option.value.type === warning.type && option.value.value === warning.value,
   );
-  return index === -1 ? WARNING_OPTIONS.findIndex((option) => option.value.value === 60) : index;
+  return index === -1
+    ? WARNING_OPTIONS.findIndex((option) => option.value.type === 'percent' && option.value.value === 10)
+    : index;
+}
+
+/** Accepts `#3366cc`, `3366cc`, or the 3-digit shorthand; rejects anything else. */
+function normalizeHexInput(raw: string): string | null {
+  const match = /^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.exec(raw.trim());
+  if (!match) return null;
+  const hex = match[1];
+  const full = hex.length === 3 ? hex.split('').map((c) => c + c).join('') : hex;
+  return `#${full.toLowerCase()}`;
 }
 
 function sectionHeading(label: string): HTMLElement {

@@ -8,6 +8,18 @@ this project uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Custom colours: a hex input or native colour picker derives a full,
+  contrast-guaranteed palette from any colour a teacher chooses, alongside
+  the fifteen curated palettes (up from six). See
+  [docs/adr/0007-gradient-themes.md](adr/0007-gradient-themes.md).
+- Gradient themes: the custom colour picker also supports a two-stop
+  gradient, rendered as one sweep across the whole visualization rather than
+  colouring each dot/segment independently.
+- A "Show timer name" toggle in Display puts the current timer's name in the
+  corner of the screen, small and readable — off by default.
+- The toolbar and sidebar now fade out after a few seconds of no mouse
+  movement or key presses, leaving only the timer visual on screen; moving
+  the cursor or pressing a key brings them back immediately.
 - Initial release: four visualizations (circle, bar, dots, digits), presets
   with local storage, light/dark themes with six palettes, full-screen
   projector mode, offline support via a service worker, and a full
@@ -22,6 +34,16 @@ this project uses [Semantic Versioning](https://semver.org/).
   See [docs/adr/0006-live-preset-editing.md](adr/0006-live-preset-editing.md).
 
 ### Changed
+- Every timer now defaults to a "last 10%" warning threshold, replacing the
+  previous fixed 60-second default, so shorter timers (a 2-minute exit
+  ticket) still warn at a sensible point instead of the whole thing being
+  "warning" from the start.
+- "Saved timers" moved to the top of the sidebar, above Appearance/Sound/
+  Display, since loading or editing a preset is the most common thing done
+  there.
+- The dots grid's readout no longer overlaps the dot grid — the numeral now
+  reserves its own row via flexbox instead of a fixed height carved out of
+  the grid, so the two stay in sync as either one's size changes.
 - The sidebar now sits on the right, matching its own toggle button's
   position in the toolbar.
 - The play/pause icon, duration readout, and every other toolbar indicator

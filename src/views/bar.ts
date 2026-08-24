@@ -1,4 +1,4 @@
-import { activeFill, activeNumeral, depletionFraction } from './types';
+import { activeFill, activeNumeral, depletionFraction, gradientStops } from './types';
 import type { RenderState, Visualization } from './types';
 
 /**
@@ -31,6 +31,7 @@ export function createBar(root: HTMLElement): Visualization {
 
   let lastFraction = -1;
   let lastFill = '';
+  let lastBgSize = '';
   let lastTrack = '';
   let lastMix = -1;
 
@@ -44,10 +45,35 @@ export function createBar(root: HTMLElement): Visualization {
         lastFraction = fraction;
       }
 
-      const colour = activeFill(state);
-      if (colour !== lastFill) {
-        fill.style.background = colour;
-        lastFill = colour;
+      const stops = gradientStops(state);
+      if (stops) {
+        const paint = `linear-gradient(90deg, ${stops.from}, ${stops.to})`;
+        if (paint !== lastFill) {
+          fill.style.backgroundColor = '';
+          fill.style.backgroundImage = paint;
+          lastFill = paint;
+        }
+        // `fill` is a "window" onto one gradient painted across the full bar
+        // width, not a gradient of its own — it shrinks via scaleX, which
+        // would otherwise squeeze that painting into whatever sliver is left.
+        // Enlarging the background by 1/fraction as the box shrinks cancels
+        // the squeeze out, so what shows through always matches the same
+        // fixed point on the full-width sweep (per the gradient design: it
+        // maps onto the whole view, not the shrinking element).
+        const bgSize = `${(100 / Math.max(fraction, 0.001)).toFixed(2)}% 100%`;
+        if (bgSize !== lastBgSize) {
+          fill.style.backgroundSize = bgSize;
+          fill.style.backgroundPosition = 'left';
+          lastBgSize = bgSize;
+        }
+      } else {
+        const colour = activeFill(state);
+        if (colour !== lastFill) {
+          fill.style.backgroundImage = '';
+          fill.style.background = colour;
+          lastFill = colour;
+          lastBgSize = '';
+        }
       }
       if (state.colors.track !== lastTrack) {
         track.style.background = state.colors.track;
