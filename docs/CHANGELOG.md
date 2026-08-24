@@ -91,6 +91,10 @@ this project uses [Semantic Versioning](https://semver.org/).
 - Changing "Tenths under ten seconds" in Digits mode no longer flashes the
   numerals — the same class of fix as the tick-style one above, applied to
   the digits visualization's own setting.
+- The From/To hex fields in Gradient mode no longer spill past the picker
+  panel's own edge — a text `<input>`'s browser-default intrinsic width was
+  overriding its flex-shrink, the same `min-width: 0` gotcha this codebase
+  has hit before (see `.sidebar-body-cell` in app.css).
 - Removed the live "One dot per X seconds · N dots" hint from under the
   toolbar; the same information is still shown while a timer is loaded for
   editing.

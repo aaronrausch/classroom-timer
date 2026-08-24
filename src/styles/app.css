@@ -1052,12 +1052,14 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: var(--gap);
+  min-width: 0;
 }
 
 .custom-color-controls {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  min-width: 0;
 }
 
 .color-input {
@@ -1088,7 +1090,13 @@ body {
 }
 
 .hex-input {
+  /* Same gotcha as .sidebar-body-cell/.layout-main elsewhere in this file:
+     a flex item's default min-width is its content's min-content size, and
+     for a text <input> that includes the browser's own intrinsic width (tied
+     to its default `size`), not just flex-basis — without this, the input
+     refused to shrink below that and spilled past the panel's own edge. */
   flex: 0 1 8rem;
+  min-width: 0;
   font-family: ui-monospace, 'SF Mono', 'Cascadia Code', Consolas, monospace;
   text-transform: lowercase;
 }
