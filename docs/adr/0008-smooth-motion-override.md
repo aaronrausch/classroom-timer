@@ -37,33 +37,39 @@ original reduced-motion work entirely; replacing it with a call to
 `depletionFraction` was both the fix and a small cleanup in the same edit.
 
 **`Settings.dotsSmoothStyle`** (`'ring' | 'shrink'`), only consulted while
-`smoothMotion` is on:
-- **`ring`**: dots delegates its rendering wholesale to a `createCircle`
-  instance it constructs and holds internally (`src/views/dots.ts`), rather
-  than reimplementing circle's dash arithmetic. The dot grid's own SVG is
-  hidden (not destroyed) while this is active, and the delegate is only
-  ever constructed while the style is actually selected. `Visualization.id`
-  stays `'dots'` throughout — this is a rendering choice inside dots mode,
-  not a switch to circle mode, so nothing outside `createDots` needs to
-  know the delegate exists.
-- **`shrink`**: keeps the real dot grid (same count, same `gridShape`
-  layout as the discrete style, for visual continuity when toggling smooth
-  motion on and off), but every lit dot's own radius becomes a continuous,
-  pure function of the *overall* elapsed fraction and that dot's own equal
-  share of the timer — `dotShrinkProgress(elapsed, index, count)`, exported
-  and unit-tested the same way `gridShape` is. Every currently-lit dot
-  visibly shrinks in lockstep as the whole timer runs, rather than only the
-  one dot whose turn it currently is (which is what the discrete style's
-  "draining dot" pie-wipe sub-animation already did, and continues to do
-  when this style is off).
+`smoothMotion` is on. Both keep the real dot grid — same count, same
+`gridShape` layout as the discrete style, for visual continuity when
+toggling smooth motion on and off — and share one piece of math,
+`dotShrinkProgress(elapsed, index, count)`: how far dot `index` (of
+`count`, reading order) is through its own equal share of the timer, 0 to
+1, continuous, exported and unit-tested the same way `gridShape` is. Every
+currently-lit dot progresses in lockstep with the whole timer, rather than
+only the one dot whose turn it currently is (which is what the discrete
+style's own "draining dot" sub-animation already did, and continues to do
+when this style is off). The two styles differ only in what they *do* with
+that progress value per dot:
+- **`shrink`**: the dot's own radius scales down from full to nothing —
+  `radius = baseRadius * (1 - progress)`.
+- **`ring`**: the dot's outer size never changes; instead it depletes with
+  exactly the arc `circle.ts` itself draws — same clockwise-from-twelve
+  geometry, same `stroke-dasharray`/`stroke-dashoffset` arithmetic (the
+  `pie` sub-element `build()` already gives every cell, previously only
+  driven by the discrete style's single draining dot). The first
+  implementation of this style delegated to a whole separate `createCircle`
+  instance instead, swapping the grid out for one big ring — visually
+  wrong: the ask was dots *individually* depleting like tiny clocks, still
+  arranged in their grid, not the grid replaced by circle mode. Reusing the
+  existing per-dot arc the discrete style already draws, driven by the
+  continuous `progress` instead of the discrete `partial`, was both the fix
+  and the simpler implementation — no second visualization instance, no
+  hide/show bookkeeping between two SVG trees.
 
 Both settings flow through `RenderState` like `reducedMotion` and
 `warningMix` already do — not through `StageOptions`/constructor
 arguments the way `circleStyle` or `circleTicks` do — because neither one
-needs a structural rebuild-on-change the way those do; `dotShrinkProgress`
-recomputes every frame for free, and the ring/grid structural swap is
-detected and handled inside `createDots`'s own `render()` from the state it
-already receives every frame, with no new stage.ts wiring at all.
+needs a structural rebuild-on-change the way those do; every frame's
+`RenderState` is enough to pick the right per-dot rendering, so nothing
+outside `createDots`'s own `render()` needs to know which style is active.
 
 ## Consequences
 
@@ -72,20 +78,19 @@ already receives every frame, with no new stage.ts wiring at all.
   motion is a choice a teacher makes for their own device; it does not
   change what `prefers-reduced-motion` means anywhere else, and turning it
   back off restores the OS preference's authority immediately.
-- Reusing `createCircle` for the ring style means zero duplicated dash-array
-  math and zero new bugs in geometry that was already correct and already
-  tested by virtue of circle mode's own existence.
+- The `ring` style reuses the exact arc geometry `build()` already gives
+  every dot for the discrete style's own draining-dot sub-animation — zero
+  duplicated dash-array math, and the same geometry that was already
+  correct and already visible in the default style.
 - `dotShrinkProgress` being a pure, exported function (`tests/dots.test.ts`)
   means the one genuinely new piece of animation math in this feature — not
   a one-line conditional like the `depletionFraction` change — is verified
-  exactly, the same discipline `gridShape` is already held to.
+  exactly, the same discipline `gridShape` is already held to. It is also
+  what makes both styles trivially consistent with each other: they read
+  the identical per-dot progress value, so switching between them mid-timer
+  never jumps.
 
 **What this costs:**
-- The dots-mode readout keeps dots' own bottom-anchored/flex layout
-  treatment (`app.css`'s `[data-viz='dots'][data-readout='on']` rules) even
-  while showing a ring, rather than adopting circle's centred-readout
-  treatment — a minor visual inconsistency, accepted rather than adding a
-  second CSS keying scheme for "dots showing a ring" as its own case.
 - Two settings instead of one (`smoothMotion` and `dotsSmoothStyle`) is
   more surface than a single toggle, but collapsing them would mean either
   a dormant dots preference that occasionally does nothing (confusing) or

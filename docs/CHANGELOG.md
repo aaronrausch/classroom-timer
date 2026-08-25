@@ -15,9 +15,10 @@ this project uses [Semantic Versioning](https://semver.org/).
   implied by anything else. See
   [docs/adr/0008-smooth-motion-override.md](adr/0008-smooth-motion-override.md).
 - With Smooth motion on, Dots mode can deplete continuously too, instead of
-  its usual discrete countable grid — a "Dots style" choice between a
-  smooth ring (borrowing circle mode's own depletion) and every lit dot
-  shrinking to nothing over its own equal share of the timer.
+  its usual discrete countable grid — a "Dots style" choice between every
+  lit dot shrinking to nothing over its own equal share of the timer, or
+  every lit dot depleting in place with circle mode's own clockwise arc
+  (the dots stay in their grid; only how each one drains changes).
 - Custom colours: a hex input or native colour picker derives a full,
   contrast-guaranteed palette from any colour a teacher chooses, alongside
   the fifteen curated palettes (up from six). See
