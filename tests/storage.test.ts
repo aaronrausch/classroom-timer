@@ -45,6 +45,8 @@ function sampleData(): AppData {
       circleTicks: 'clock',
       showTenths: true,
       showTimerName: true,
+      smoothMotion: true,
+      dotsSmoothStyle: 'shrink',
       sidebarCollapsed: false,
     },
     presets: starterPresets(),

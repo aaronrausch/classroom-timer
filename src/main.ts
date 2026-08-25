@@ -370,6 +370,8 @@ function boot(): void {
       showName: data.settings.showTimerName,
       reducedMotion,
       warningMix,
+      smoothMotion: data.settings.smoothMotion,
+      dotsSmoothStyle: data.settings.dotsSmoothStyle,
     };
   }
 

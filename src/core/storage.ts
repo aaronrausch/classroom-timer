@@ -276,6 +276,10 @@ function sanitizeSettings(raw: unknown): Settings {
     showTenths: typeof raw['showTenths'] === 'boolean' ? raw['showTenths'] : DEFAULT_SETTINGS.showTenths,
     showTimerName:
       typeof raw['showTimerName'] === 'boolean' ? raw['showTimerName'] : DEFAULT_SETTINGS.showTimerName,
+    smoothMotion:
+      typeof raw['smoothMotion'] === 'boolean' ? raw['smoothMotion'] : DEFAULT_SETTINGS.smoothMotion,
+    dotsSmoothStyle:
+      raw['dotsSmoothStyle'] === 'shrink' ? 'shrink' : DEFAULT_SETTINGS.dotsSmoothStyle,
     sidebarCollapsed:
       typeof raw['sidebarCollapsed'] === 'boolean'
         ? raw['sidebarCollapsed']

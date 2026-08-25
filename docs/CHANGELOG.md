@@ -8,6 +8,16 @@ this project uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- A "Smooth motion" setting (off by default) that forces the circle, bar,
+  and digits' bottom proportion strip to deplete continuously even when the
+  device's own `prefers-reduced-motion` preference is on — a deliberate,
+  explicit override a teacher can turn on for their own timer, never
+  implied by anything else. See
+  [docs/adr/0008-smooth-motion-override.md](adr/0008-smooth-motion-override.md).
+- With Smooth motion on, Dots mode can deplete continuously too, instead of
+  its usual discrete countable grid — a "Dots style" choice between a
+  smooth ring (borrowing circle mode's own depletion) and every lit dot
+  shrinking to nothing over its own equal share of the timer.
 - Custom colours: a hex input or native colour picker derives a full,
   contrast-guaranteed palette from any colour a teacher chooses, alongside
   the fifteen curated palettes (up from six). See

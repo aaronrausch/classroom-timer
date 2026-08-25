@@ -29,6 +29,15 @@ export interface RenderState {
    * flash (SPEC §5.5); under reduced motion it is 0 or 1 and nothing else.
    */
   warningMix: number;
+  /**
+   * An explicit, opt-in override: continuous depletion even while
+   * `reducedMotion` is true. See `depletionFraction` below and the doc
+   * comment on `Settings.smoothMotion` for why this defaults off and stays
+   * off unless a teacher turns it on themselves.
+   */
+  smoothMotion: boolean;
+  /** Only consulted by the dots view, and only while `smoothMotion` is on. */
+  dotsSmoothStyle: 'ring' | 'shrink';
 }
 
 export interface Visualization {
@@ -140,10 +149,12 @@ export function formatClock(remainingMs: number, showTenths = false): string {
  * Normally this is the continuous fraction, because stepped depletion reads as
  * a stutter on a wall. Under `prefers-reduced-motion` it steps once per second
  * instead (SPEC §8) — still exact at both ends, still fully functional, just
- * without the continuous movement that some people cannot tolerate.
+ * without the continuous movement that some people cannot tolerate — *unless*
+ * `smoothMotion` is on, an explicit opt-in that says the teacher wants
+ * continuous motion regardless of what the device's own preference asks for.
  */
 export function depletionFraction(state: RenderState): number {
-  if (!state.reducedMotion) return state.fraction;
+  if (!state.reducedMotion || state.smoothMotion) return state.fraction;
   if (state.totalMs <= 0) return 0;
   const stepped = Math.ceil(state.remainingMs / 1000) * 1000;
   return Math.min(1, Math.max(0, stepped / state.totalMs));

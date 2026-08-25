@@ -168,6 +168,10 @@ Shared requirements for all three:
 - `[MUST]` Correct at both extremes: exactly full at start, exactly empty at zero, no
   visual残 remainder or off-by-one pixel at completion.
 - `[MUST]` Respect `prefers-reduced-motion` (§8).
+- `[MAY]` A "smooth motion" setting that explicitly overrides `prefers-reduced-motion`,
+  forcing continuous depletion anyway. Off by default and never implied by any other
+  setting — a device's reduced-motion preference exists to protect someone from real
+  motion, so overriding it is only ever a deliberate, explicit choice, never a silent one.
 
 #### A. Circle (default)
 An unfilling ring or disc, depleting **clockwise from 12 o'clock**, mirroring the analogue
@@ -204,6 +208,11 @@ struggle to estimate proportion.
 - `[SHOULD]` Grid layout adapts to viewport aspect ratio to keep dots as large as possible.
 - `[SHOULD]` The final dot depletes continuously (drains or fades) rather than vanishing, so
   the last interval is not a dead zone.
+- `[MAY]` While "smooth motion" (above) is on, dots may instead deplete continuously — as
+  either a smooth ring in place of the grid, or every lit dot shrinking to nothing over its
+  own equal share of the timer — rather than as discrete countable units. Off by default;
+  the discrete grid is what makes dots dots (SPEC §5.3C's opening sentence), so this is an
+  explicit opt-in trade of "countable" for "continuous", not the mode's own default character.
 
 #### D. Digits
 A full-screen numeric countdown, `MM:SS`, with no graphical depletion. The most precise and
@@ -472,7 +481,9 @@ item below.
   state changes (started, paused, finished) — not every second.
 - `[MUST]` Honour `prefers-reduced-motion`: depletion becomes stepped (e.g. per second) with
   no easing, transitions become instant, all decorative motion is removed. The timer remains
-  fully functional — reduced motion is not a degraded mode.
+  fully functional — reduced motion is not a degraded mode. The one exception is the explicit
+  "smooth motion" setting (§5.3), which a teacher must turn on themselves — the device's own
+  preference is never overridden implicitly.
 - `[MUST]` Respect `prefers-contrast` where supported.
 - `[SHOULD]` Verified with at least one screen reader before v1.
 - `[SHOULD]` Text scales with user font-size settings without breaking layout.

@@ -56,6 +56,26 @@ export interface Settings {
   /** A small, persistent label in the corner of the stage naming the running timer. Off by default. */
   showTimerName: boolean;
   /**
+   * Forces the circle, bar and digits' proportion strip to deplete
+   * continuously even when the OS's `prefers-reduced-motion` is on, and
+   * switches the dots mode from discrete countable dots to one of the two
+   * continuous `dotsSmoothStyle` variants below. Off by default: a device's
+   * reduced-motion preference exists to protect someone from real motion —
+   * this is a deliberate, explicit opt-in override of that, not something to
+   * default on and quietly undo it for them.
+   */
+  smoothMotion: boolean;
+  /**
+   * Only meaningful while `smoothMotion` is on — otherwise dots mode stays
+   * the discrete countable grid regardless of what this holds, so it is safe
+   * to leave a dormant preference set even with smooth motion off.
+   * "ring": depletes like circle mode, continuously, in place of the grid.
+   * "shrink": keeps the same dot grid, but each dot continuously shrinks to
+   * nothing over its own equal share of the timer instead of snapping
+   * between lit and spent.
+   */
+  dotsSmoothStyle: 'ring' | 'shrink';
+  /**
    * Whether the sidebar (saved timers plus settings) is folded away. A teacher
    * who runs the same two timers all day wants the wall, not the panel; a
    * teacher mid-planning wants it open. Remembered, because it is a working
@@ -79,6 +99,8 @@ export const DEFAULT_SETTINGS: Settings = {
   circleTicks: 'none',
   showTenths: false,
   showTimerName: false,
+  smoothMotion: false,
+  dotsSmoothStyle: 'ring',
   sidebarCollapsed: false,
 };
 

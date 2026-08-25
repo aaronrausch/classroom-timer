@@ -1,4 +1,4 @@
-import { activeFill, activeNumeral, formatClock, setAttrs, svg } from './types';
+import { activeFill, activeNumeral, depletionFraction, formatClock, setAttrs, svg } from './types';
 import type { RenderState, Visualization } from './types';
 
 /** Exposed for the same reason `CircleVisualization.setTicks` is: a setting
@@ -153,9 +153,7 @@ export function createDigits(root: HTMLElement, initialShowTenths = false): Digi
         lastMix = state.warningMix;
       }
 
-      const fraction = state.reducedMotion
-        ? Math.min(1, Math.ceil(state.remainingMs / 1000) * 1000 / Math.max(1, state.totalMs))
-        : state.fraction;
+      const fraction = depletionFraction(state);
       if (fraction !== lastFraction) {
         proportionFill.style.transform = `scaleX(${fraction})`;
         lastFraction = fraction;

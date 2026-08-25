@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dotIntervalLabel, dotPlan, gridShape } from '../src/views/dots';
+import { dotIntervalLabel, dotPlan, dotShrinkProgress, gridShape } from '../src/views/dots';
 
 describe('dotPlan', () => {
   it('never represents time in a non-round unit', () => {
@@ -77,5 +77,43 @@ describe('gridShape', () => {
     const tall = gridShape(12, 9 / 16);
     expect(wide.cols).toBeGreaterThan(wide.rows);
     expect(tall.rows).toBeGreaterThan(tall.cols);
+  });
+});
+
+describe('dotShrinkProgress — the "shrink" smooth-motion style', () => {
+  it('is 0 (full size) for every dot at the very start', () => {
+    for (let i = 0; i < 5; i += 1) {
+      expect(dotShrinkProgress(0, i, 5)).toBe(0);
+    }
+  });
+
+  it('is 1 (fully gone) for every dot at the very end', () => {
+    for (let i = 0; i < 5; i += 1) {
+      expect(dotShrinkProgress(1, i, 5)).toBe(1);
+    }
+  });
+
+  it('dots finish in reading order, earlier index first', () => {
+    // Halfway through a 4-dot timer, dot 0 is long gone, dot 1 just finished,
+    // and dots 2-3 have not started shrinking yet.
+    expect(dotShrinkProgress(0.5, 0, 4)).toBe(1);
+    expect(dotShrinkProgress(0.5, 1, 4)).toBe(1);
+    expect(dotShrinkProgress(0.5, 2, 4)).toBe(0);
+    expect(dotShrinkProgress(0.5, 3, 4)).toBe(0);
+  });
+
+  it('shrinks continuously across its own equal share, not in a jump', () => {
+    // Dot 1 of 4 owns the [0.25, 0.5] window; at its midpoint it should be
+    // exactly half shrunk, not still full size or already gone.
+    expect(dotShrinkProgress(0.375, 1, 4)).toBeCloseTo(0.5);
+  });
+
+  it('never goes below 0 or above 1', () => {
+    expect(dotShrinkProgress(-0.2, 0, 4)).toBe(0);
+    expect(dotShrinkProgress(1.2, 3, 4)).toBe(1);
+  });
+
+  it('treats a zero-count grid as already gone rather than dividing oddly', () => {
+    expect(dotShrinkProgress(0.5, 0, 0)).toBe(1);
   });
 });

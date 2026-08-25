@@ -1,6 +1,9 @@
+import { createCircle } from './circle';
+import type { CircleVisualization } from './circle';
 import {
   activeFill,
   activeNumeral,
+  depletionFraction,
   gradientStops,
   nextGradientId,
   setAttrs,
@@ -100,6 +103,19 @@ export function gridShape(count: number, aspect: number): { cols: number; rows: 
 
 /** A spent or filler dot fades to this fraction of the track colour's opacity. */
 const GHOST_OPACITY = 0.16;
+
+/**
+ * How far dot `index` (of `count`, reading order, equal shares) has shrunk
+ * toward nothing under the "shrink" smooth-motion style: 0 at full size, 1
+ * fully gone. Pure and continuous — driven straight off the render loop's
+ * own continuous elapsed fraction, no per-second step anywhere in it — which
+ * is what lets every lit dot visibly shrink in lockstep as the whole timer
+ * runs, rather than only the one dot whose turn it currently is.
+ */
+export function dotShrinkProgress(elapsedFraction: number, index: number, count: number): number {
+  if (count <= 0) return 1;
+  return Math.min(1, Math.max(0, elapsedFraction * count - index));
+}
 
 export function createDots(root: HTMLElement): Visualization {
   const svgEl = svg('svg', {
@@ -213,21 +229,43 @@ export function createDots(root: HTMLElement): Visualization {
     }
   }
 
+  // The "ring" smooth-motion style does not draw dots at all — it borrows
+  // circle mode's own renderer wholesale rather than reimplementing its dash
+  // arithmetic, and is only ever constructed while that style is actually
+  // selected, so choosing it never pays for an SVG tree nothing is showing.
+  let ringDelegate: CircleVisualization | null = null;
+  let activeMode: 'grid' | 'ring' = 'grid';
+
+  function ensureGridMode(): void {
+    if (activeMode === 'grid') return;
+    activeMode = 'grid';
+    ringDelegate?.destroy();
+    ringDelegate = null;
+    svgEl.removeAttribute('hidden');
+  }
+
+  function ensureRingMode(): void {
+    if (activeMode === 'ring') return;
+    activeMode = 'ring';
+    svgEl.setAttribute('hidden', '');
+    ringDelegate = createCircle(root, 'ring', 'none');
+  }
+
   let lastNumeral = '';
 
   return {
     id: 'dots',
     supportsReadout: true,
     render(state: RenderState) {
+      if (state.smoothMotion && state.dotsSmoothStyle === 'ring') {
+        ensureRingMode();
+        ringDelegate?.render(state);
+        return;
+      }
+      ensureGridMode();
+
       const plan = dotPlan(Math.round(state.totalMs / 1000));
       build(plan.count);
-
-      const intervalMs = plan.intervalSeconds * 1000;
-      const remainingDots = state.remainingMs / intervalMs;
-      // Guard against floating point leaving a hairline dot lit at exactly zero.
-      const litCount = Math.max(0, Math.min(plan.count, Math.ceil(remainingDots - 1e-9)));
-      const firstLit = plan.count - litCount;
-      const partial = litCount > 0 ? remainingDots - (litCount - 1) : 0;
 
       const stops = gradientStops(state);
       const fill = stops ? `url(#${gradientId})` : activeFill(state);
@@ -240,46 +278,73 @@ export function createDots(root: HTMLElement): Visualization {
       // The non-colour channel for the warning state: the dots swell slightly.
       const grow = 1 + 0.08 * state.warningMix;
 
-      for (let i = 0; i < cells.length; i += 1) {
-        const cellRef = cells[i];
-        const radius = cellRef.r * grow;
-
-        if (cellRef.isPadding) {
-          // Never lights, never drains: a permanent faint shadow that
-          // completes the rectangle (see `gridShape`).
-          setAttrs(cellRef.base, { r: cellRef.r, fill: track, opacity: GHOST_OPACITY });
+      if (state.smoothMotion && state.dotsSmoothStyle === 'shrink') {
+        // Every lit dot's own size is a direct, continuous function of how
+        // much of its own equal share of the timer has elapsed — nothing
+        // here steps once per second, and nothing here waits for a "turn"
+        // the way the countable style's single draining dot does.
+        const elapsed = 1 - depletionFraction(state);
+        for (let i = 0; i < cells.length; i += 1) {
+          const cellRef = cells[i];
+          if (cellRef.isPadding) {
+            setAttrs(cellRef.base, { r: cellRef.r, fill: track, opacity: GHOST_OPACITY });
+            setAttrs(cellRef.pie, { opacity: 0 });
+            continue;
+          }
+          const progress = dotShrinkProgress(elapsed, i, plan.count);
+          const radius = cellRef.r * grow * (1 - progress);
+          setAttrs(cellRef.base, { r: Math.max(0, radius), fill, opacity: 1 });
           setAttrs(cellRef.pie, { opacity: 0 });
-          continue;
         }
+      } else {
+        const intervalMs = plan.intervalSeconds * 1000;
+        const remainingDots = state.remainingMs / intervalMs;
+        // Guard against floating point leaving a hairline dot lit at exactly zero.
+        const litCount = Math.max(0, Math.min(plan.count, Math.ceil(remainingDots - 1e-9)));
+        const firstLit = plan.count - litCount;
+        const partial = litCount > 0 ? remainingDots - (litCount - 1) : 0;
 
-        if (i < firstLit) {
-          // Spent — left as a faint shadow of itself, not a solid disc, so
-          // the eye reads "used up" without it competing with what remains.
-          setAttrs(cellRef.base, { r: cellRef.r, fill: track, opacity: GHOST_OPACITY });
-          setAttrs(cellRef.pie, { opacity: 0 });
-          continue;
-        }
+        for (let i = 0; i < cells.length; i += 1) {
+          const cellRef = cells[i];
+          const radius = cellRef.r * grow;
 
-        if (i > firstLit) {
-          setAttrs(cellRef.base, { r: radius, fill, opacity: 1 });
-          setAttrs(cellRef.pie, { opacity: 0 });
-          continue;
-        }
+          if (cellRef.isPadding) {
+            // Never lights, never drains: a permanent faint shadow that
+            // completes the rectangle (see `gridShape`).
+            setAttrs(cellRef.base, { r: cellRef.r, fill: track, opacity: GHOST_OPACITY });
+            setAttrs(cellRef.pie, { opacity: 0 });
+            continue;
+          }
 
-        // The draining dot.
-        if (state.reducedMotion) {
-          setAttrs(cellRef.base, { r: radius, fill, opacity: 1 });
-          setAttrs(cellRef.pie, { opacity: 0 });
-        } else {
-          setAttrs(cellRef.base, { r: radius, fill: track, opacity: GHOST_OPACITY });
-          setAttrs(cellRef.pie, {
-            opacity: 1,
-            stroke: fill,
-            r: radius / 2,
-            'stroke-width': radius,
-            'stroke-dasharray': Math.PI * radius,
-            'stroke-dashoffset': Math.PI * radius * (1 - Math.min(1, Math.max(0, partial))),
-          });
+          if (i < firstLit) {
+            // Spent — left as a faint shadow of itself, not a solid disc, so
+            // the eye reads "used up" without it competing with what remains.
+            setAttrs(cellRef.base, { r: cellRef.r, fill: track, opacity: GHOST_OPACITY });
+            setAttrs(cellRef.pie, { opacity: 0 });
+            continue;
+          }
+
+          if (i > firstLit) {
+            setAttrs(cellRef.base, { r: radius, fill, opacity: 1 });
+            setAttrs(cellRef.pie, { opacity: 0 });
+            continue;
+          }
+
+          // The draining dot.
+          if (state.reducedMotion) {
+            setAttrs(cellRef.base, { r: radius, fill, opacity: 1 });
+            setAttrs(cellRef.pie, { opacity: 0 });
+          } else {
+            setAttrs(cellRef.base, { r: radius, fill: track, opacity: GHOST_OPACITY });
+            setAttrs(cellRef.pie, {
+              opacity: 1,
+              stroke: fill,
+              r: radius / 2,
+              'stroke-width': radius,
+              'stroke-dasharray': Math.PI * radius,
+              'stroke-dashoffset': Math.PI * radius * (1 - Math.min(1, Math.max(0, partial))),
+            });
+          }
         }
       }
 
@@ -295,6 +360,7 @@ export function createDots(root: HTMLElement): Visualization {
     },
     destroy() {
       observer?.disconnect();
+      ringDelegate?.destroy();
       svgEl.remove();
     },
   };

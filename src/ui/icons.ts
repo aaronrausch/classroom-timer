@@ -91,6 +91,12 @@ const PATHS: Record<string, string> = {
   // different control that used to share vizDigits's icon and read as the
   // same button twice.
   readoutNumbers: '<path d="M6.4 9.3 8.6 7.4V16.6"/><path d="M13.2 9.6a2.6 2.6 0 1 1 4.6 1.7L13.3 16.6h4.9"/>',
+  // The dots "shrink" smooth-motion style: three circles of decreasing size,
+  // the last one solid and tiny — a dot mid-way through vanishing rather
+  // than jumping between lit and spent.
+  dotsShrink:
+    '<circle cx="5.5" cy="12" r="5"/><circle cx="15" cy="12" r="3.2"/>' +
+    '<circle cx="21" cy="12" r="1.3" fill="currentColor" stroke="none"/>',
 };
 
 export type IconName = keyof typeof PATHS | string;

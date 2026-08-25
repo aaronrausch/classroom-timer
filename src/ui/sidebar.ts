@@ -104,6 +104,7 @@ export class Sidebar {
   private readonly notice: HTMLElement;
   private readonly privacy: HTMLElement;
   private soundSectionRefresh: (() => void) | null = null;
+  private appearanceSectionRefresh: (() => void) | null = null;
 
   private nameInput!: HTMLInputElement;
   private paletteButtons = new Map<string, HTMLButtonElement>();
@@ -191,6 +192,7 @@ export class Sidebar {
     this.notice.hidden = !notice;
     this.notice.textContent = notice ?? '';
     this.soundSectionRefresh?.();
+    this.appearanceSectionRefresh?.();
     this.refreshCurrentTimer();
   }
 
@@ -670,6 +672,48 @@ export class Sidebar {
       ),
     );
     section.append(nameRow);
+
+    const smoothRow = document.createElement('div');
+    smoothRow.className = 'settings-row';
+    const smoothLabel = document.createElement('span');
+    smoothLabel.className = 'settings-label';
+    smoothLabel.textContent = 'Smooth motion';
+    smoothRow.append(
+      smoothLabel,
+      toggleButton(
+        this.callbacks.getData().settings.smoothMotion,
+        'check',
+        'close',
+        'Smooth motion on',
+        'Smooth motion off',
+        (next) => {
+          this.patch({ smoothMotion: next });
+          sync();
+        },
+      ),
+    );
+
+    // Only meaningful once Smooth motion is actually on — hidden rather than
+    // just left inert, so a teacher isn't left guessing why picking a dots
+    // style did nothing, the same "hidden rather than silently ignored"
+    // reasoning the readout toggle already uses for digits mode.
+    const dotsStyleGroup = choiceRow<'ring' | 'shrink'>(
+      'Dots style',
+      [
+        { value: 'ring', label: 'Smooth ring, like Circle', iconName: 'vizCircle' },
+        { value: 'shrink', label: 'Shrink and disappear', iconName: 'dotsShrink' },
+      ],
+      () => this.callbacks.getData().settings.dotsSmoothStyle,
+      (value) => this.patch({ dotsSmoothStyle: value }),
+    );
+
+    const sync = (): void => {
+      dotsStyleGroup.hidden = !this.callbacks.getData().settings.smoothMotion;
+    };
+    this.appearanceSectionRefresh = sync;
+    sync();
+
+    section.append(smoothRow, dotsStyleGroup);
 
     return section;
   }
