@@ -43,6 +43,22 @@ however good an idea it seems in isolation.
   `localStorage` access — that's what makes it unit-testable without a
   browser, and it's where correctness has to live (SPEC §9.2).
 
+## A note on continuity across sessions
+
+This repo has been built almost entirely through iterative Claude Code
+sessions, and a fair amount of working context — prior design decisions,
+this user's feedback style, project history — lives in Claude's own
+per-directory session memory rather than in this repo. That memory is keyed
+to the project's filesystem path. If this repo is ever moved (as it was
+once already, into `Development/Work/`), a session started from the new
+path starts with a blank memory slate — it does not automatically inherit
+the old one. This document, `SPEC.md`, the ADRs, and the git log are the
+durable, path-independent record; treat them as the source of truth when
+memory is unavailable. If it looks like that's what happened — a session
+that doesn't seem to know recent project history — say so to the user
+rather than silently re-deriving everything from scratch as if nothing
+were missing.
+
 ## Before you open a PR
 
 - Run `npm run typecheck && npm test` — both must pass.
