@@ -129,6 +129,31 @@ body {
   grid-template-columns: minmax(0, 1fr) 0;
 }
 
+/*
+ * Collapsing the column to 0 is not by itself enough to make the panel
+ * *gone*, and the remainder is more than cosmetic.
+ *
+ * `border-left` is not part of the column's 0 width, so the panel stays 1px
+ * wide — and `.sidebar-body` inside it keeps `overflow: auto` on both axes
+ * (setting one axis non-visible computes the other to `auto`) over content
+ * that is now hugely larger than its 1px box. The panel's own pair of
+ * scrollbars therefore paints into that sliver: on any browser with classic
+ * space-taking scrollbars, a permanent 1-5px stub of both at the screen
+ * edge, scrollable by exactly the width of the stub. Hence "both scrollbars
+ * in normal view, horizontal one vanishes when the sidebar is opened".
+ *
+ * So a collapsed panel gives up its border, and is explicitly told not to
+ * scroll — the second rule also covering the moments mid-transition when the
+ * width is between 0 and open.
+ */
+.layout-sidebar-collapsed .sidebar {
+  border-left-width: 0;
+}
+
+.layout-sidebar-collapsed .sidebar-body {
+  overflow: hidden;
+}
+
 .layout-main {
   container-type: inline-size;
   container-name: main;

@@ -101,6 +101,12 @@ this project uses [Semantic Versioning](https://semver.org/).
   other's. The shell is now capped at the space that genuinely exists, and
   the document is explicitly `overflow: hidden` — all real scrolling in this
   app is interior to the sidebar, so a document scrollbar was always a bug.
+- ...and the other half of the same symptom: a collapsed sidebar kept its
+  1px `border-left`, which the 0-width grid column does not cover, and the
+  panel's own body went on being scrollable inside that sliver — painting a
+  1-5px stub of *both* its scrollbars against the screen edge. (Which is why
+  opening the sidebar "fixed" the horizontal one: at full width its content
+  fits.) A collapsed sidebar now gives up its border and does not scroll.
 - Changing a settings-panel option unrelated to light/dark (circle style,
   circle ticks, etc.) no longer triggers a full rebuild of the saved-timer
   tiles — that rebuild is now correctly gated on the theme actually changing,
