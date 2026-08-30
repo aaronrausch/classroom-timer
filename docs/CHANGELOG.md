@@ -93,6 +93,14 @@ this project uses [Semantic Versioning](https://semver.org/).
   visualizations.
 
 ### Fixed
+- No more hairline scrollbars. The app shell asked for `100dvh` (the
+  viewport, *including* the strip a classic horizontal scrollbar sits over)
+  but took `min-height: 100%` (what is actually available) as a floor rather
+  than a ceiling, so on any browser with space-taking scrollbars the two
+  disagreed by a pixel or so and each axis' scrollbar kept provoking the
+  other's. The shell is now capped at the space that genuinely exists, and
+  the document is explicitly `overflow: hidden` — all real scrolling in this
+  app is interior to the sidebar, so a document scrollbar was always a bug.
 - Changing a settings-panel option unrelated to light/dark (circle style,
   circle ticks, etc.) no longer triggers a full rebuild of the saved-timer
   tiles — that rebuild is now correctly gated on the theme actually changing,

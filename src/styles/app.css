@@ -48,11 +48,25 @@
   display: none !important;
 }
 
+/*
+ * The document itself never scrolls. Every scrollable region in this app is
+ * an interior one (`.sidebar-body`), and the shell is sized to the viewport
+ * exactly — so a document-level scrollbar is always a bug, never a feature.
+ *
+ * Saying so explicitly is what stops a hairline one appearing: `dvh`/`vmin`
+ * lengths and grid tracks resolve to fractions of a CSS pixel, browser zoom
+ * makes those fractions arbitrary, and `clientHeight` is an integer. A
+ * sub-pixel remainder is therefore normal and unavoidable at some zoom
+ * levels — with classic (space-taking) scrollbars it surfaced as a permanent
+ * sliver of scrollbar on both axes, each one stealing space and provoking
+ * the other.
+ */
 html,
 body {
   margin: 0;
   padding: 0;
   height: 100%;
+  overflow: hidden;
   overscroll-behavior: none;
 }
 
@@ -65,9 +79,18 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/*
+ * `dvh` tracks a mobile browser's collapsing address bar, which `100%` cannot
+ * — but `dvh` measures the *viewport*, including any area a classic
+ * horizontal scrollbar sits over, while `100%` measures what is actually
+ * available. Taking `dvh` capped at `100%` keeps the mobile behaviour without
+ * ever claiming height the page does not really have. (This was previously a
+ * `min-height: 100%`, which took the larger of the two instead of the
+ * smaller: exactly backwards, and the seed of the scrollbar loop above.)
+ */
 #app {
   height: 100dvh;
-  min-height: 100%;
+  max-height: 100%;
 }
 
 /*
@@ -95,8 +118,10 @@ body {
    * fill it and their own `overflow: auto` finally has a real box to clip to.
    */
   grid-template-rows: minmax(0, 1fr);
-  height: 100dvh;
-  min-height: 100%;
+  /* `#app` above is already sized to the viewport exactly; matching it is
+     enough, and re-deriving from `dvh` here would reintroduce the same
+     viewport-vs-available mismatch one level down. */
+  height: 100%;
   transition: grid-template-columns var(--transition);
 }
 
